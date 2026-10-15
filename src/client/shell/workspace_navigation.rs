@@ -75,6 +75,26 @@ impl ClientShellState {
         self.navigation_target(&self.active_endpoint_id, workspace_id)
     }
 
+    pub(super) fn remember_last_workspace_before(
+        &mut self,
+        endpoint_id: &ClientEndpointId,
+        workspace_id: &str,
+    ) {
+        let Some(current) = self.focused_navigation_target() else {
+            return;
+        };
+        if current.endpoint_id == *endpoint_id && current.workspace_id == workspace_id {
+            return;
+        }
+        self.last_workspace = Some((current.endpoint_id, current.workspace_id));
+    }
+
+    pub(super) fn remember_focused_workspace(&mut self) {
+        if let Some(current) = self.focused_navigation_target() {
+            self.last_workspace = Some((current.endpoint_id, current.workspace_id));
+        }
+    }
+
     pub(super) fn navigation_target_valid(&self, target: &WorkspaceNavigationTarget) -> bool {
         self.endpoints.iter().any(|endpoint| {
             endpoint.endpoint_id == target.endpoint_id

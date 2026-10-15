@@ -109,6 +109,25 @@ impl ClientShellState {
         outcome: &mut ClientShellInput,
     ) -> bool {
         use crate::input::KeybindAction;
+        if action == KeybindAction::LastWorkspace {
+            let Some((endpoint_id, workspace_id)) = self.last_workspace.clone() else {
+                return true;
+            };
+            if self.endpoint_is_online(&endpoint_id)
+                && self
+                    .navigation_target(&endpoint_id, &workspace_id)
+                    .is_none_or(|target| !self.navigation_target_valid(&target))
+            {
+                self.last_workspace = None;
+                return true;
+            }
+            self.focus_or_activate(
+                endpoint_id,
+                ClientEndpointFocusTarget::Workspace(workspace_id),
+                outcome,
+            );
+            return true;
+        }
         if !self.multi_endpoint_active() {
             return false;
         }

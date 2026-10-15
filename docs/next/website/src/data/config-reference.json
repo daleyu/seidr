@@ -614,6 +614,12 @@
           "description": "Select the next workspace. Unset by default."
         },
         {
+          "key": "keys.last_workspace",
+          "type": "keybinding",
+          "default": "\"prefix+shift+l\"",
+          "description": "Toggle to the previously focused workspace, including its machine. Default: \"prefix+shift+l\"."
+        },
+        {
           "key": "keys.previous_agent",
           "type": "keybinding",
           "default": "unset",
@@ -760,7 +766,7 @@
         {
           "key": "keys.swap_pane_right",
           "type": "keybinding",
-          "default": "\"prefix+shift+l\"",
+          "default": "\"prefix+shift+right\"",
           "description": "Swap the focused pane with the pane to the right."
         },
         {

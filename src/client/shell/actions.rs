@@ -391,6 +391,7 @@ impl ClientShellState {
         let Some(snapshot) = self.snapshot.as_deref() else {
             return false;
         };
+        let boot_id = snapshot.boot_id.clone();
         let confirmation_workspace_id = match &method {
             crate::api::schema::Method::TabClose(target) => snapshot
                 .tabs
@@ -404,13 +405,23 @@ impl ClientShellState {
                 .map(|pane| pane.workspace_id.clone()),
             _ => None,
         };
+        match &method {
+            crate::api::schema::Method::WorkspaceFocus(target) => {
+                let endpoint_id = self.active_endpoint_id.clone();
+                self.remember_last_workspace_before(&endpoint_id, &target.workspace_id);
+            }
+            crate::api::schema::Method::WorkspaceCreate(params) if params.focus => {
+                self.remember_focused_workspace();
+            }
+            _ => {}
+        }
         let request_id = self.next_request_id;
         self.next_request_id = self.next_request_id.saturating_add(1);
         let request_id = format!("client-shell:{request_id}");
         self.pending_requests.insert(
             request_id.clone(),
             PendingEndpointRequest {
-                boot_id: snapshot.boot_id.clone(),
+                boot_id: boot_id.clone(),
                 method_name,
                 confirmation_workspace_id,
                 kind,
@@ -418,7 +429,7 @@ impl ClientShellState {
         );
         outcome.actions.push(ClientShellAction::Endpoint {
             endpoint_id: self.active_endpoint_id.clone(),
-            boot_id: snapshot.boot_id.clone(),
+            boot_id,
             request: Box::new(crate::api::schema::Request {
                 id: request_id,
                 method,
