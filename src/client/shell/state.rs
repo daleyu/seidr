@@ -353,6 +353,7 @@ pub(super) struct ClientNavigatorRow {
     pub(super) label: String,
     pub(super) meta: String,
     pub(super) detail: String,
+    pub(super) search_text: String,
     pub(super) agent: Option<String>,
     pub(super) status: Option<crate::api::schema::AgentStatus>,
     pub(super) stale: bool,

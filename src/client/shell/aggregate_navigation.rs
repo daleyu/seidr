@@ -2,6 +2,43 @@
 
 use super::*;
 use crate::protocol::ClientShellAgent;
+use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
+use nucleo_matcher::{Config as FuzzyConfig, Matcher as FuzzyMatcher};
+use std::cell::RefCell;
+
+thread_local! {
+    static NAVIGATOR_FUZZY_MATCHER: RefCell<FuzzyMatcher> =
+        RefCell::new(FuzzyMatcher::new(FuzzyConfig::DEFAULT));
+}
+
+struct NavigatorSearchCandidate {
+    row: ClientNavigatorRow,
+}
+
+impl AsRef<str> for NavigatorSearchCandidate {
+    fn as_ref(&self) -> &str {
+        &self.row.search_text
+    }
+}
+
+fn rank_navigator_rows(rows: Vec<ClientNavigatorRow>, query: &str) -> Vec<ClientNavigatorRow> {
+    let candidates = rows
+        .into_iter()
+        .map(|row| NavigatorSearchCandidate { row })
+        .collect::<Vec<_>>();
+    NAVIGATOR_FUZZY_MATCHER.with(|matcher| {
+        let mut matcher = matcher.borrow_mut();
+        let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+        pattern
+            .match_list(candidates, &mut matcher)
+            .into_iter()
+            .map(|(mut candidate, _score)| {
+                candidate.row.depth = 0;
+                candidate.row
+            })
+            .collect()
+    })
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct CachedEndpointSnapshot<'a> {
@@ -280,21 +317,13 @@ pub(super) fn navigator_rows(
     active_endpoint_id: &ClientEndpointId,
     navigator: &ClientNavigatorOverlay,
 ) -> Vec<ClientNavigatorRow> {
-    let query = navigator.query.trim().to_lowercase();
+    let query = navigator.query.trim();
     let filter = |status| match navigator.filter {
         Some(ClientNavigatorFilter::Blocked) => status == crate::api::schema::AgentStatus::Blocked,
         Some(ClientNavigatorFilter::Working) => status == crate::api::schema::AgentStatus::Working,
         Some(ClientNavigatorFilter::Idle) => status == crate::api::schema::AgentStatus::Idle,
         Some(ClientNavigatorFilter::Done) => status == crate::api::schema::AgentStatus::Done,
         None => true,
-    };
-    let words = query.split_whitespace().collect::<Vec<_>>();
-    let text = |value: &str| {
-        if words.is_empty() {
-            return true;
-        }
-        let value = value.to_lowercase();
-        words.iter().all(|word| value.contains(word))
     };
     let filtering = navigator.filter.is_some() || !query.is_empty();
     let federated = endpoints.len() > 1;
@@ -303,7 +332,7 @@ pub(super) fn navigator_rows(
 
     for endpoint in endpoints {
         let stale = endpoint.status != ClientEndpointStatus::Online;
-        let endpoint_query_matches = !query.is_empty() && text(&endpoint.label);
+        let endpoint_query_matches = !query.is_empty();
         let mut endpoint_rows = Vec::new();
         if let Some(snapshot) = endpoint.snapshot.as_deref() {
             let agents = snapshot
@@ -329,9 +358,6 @@ pub(super) fn navigator_rows(
                     .push(pane);
             }
             for workspace in &snapshot.workspaces {
-                let workspace_matches = endpoint_query_matches
-                    || text(&workspace.label)
-                    || workspace.branch.as_deref().is_some_and(text);
                 let mut children = Vec::new();
                 let workspace_tabs = tabs_by_workspace
                     .get(workspace.workspace_id.as_str())
@@ -339,7 +365,6 @@ pub(super) fn navigator_rows(
                     .unwrap_or_default();
                 let multiple_tabs = workspace_tabs.len() > 1;
                 for tab in workspace_tabs {
-                    let tab_matches = workspace_matches || text(&tab.label);
                     let tab_panes = panes_by_tab
                         .get(tab.tab_id.as_str())
                         .map(Vec::as_slice)
@@ -387,18 +412,28 @@ pub(super) fn navigator_rows(
                             .as_deref()
                             .or(pane.cwd.as_deref())
                             .unwrap_or_default();
-                        if filter(status)
-                            && (tab_matches
-                                || text(&label)
-                                || text(meta)
-                                || pane.cwd.as_deref().is_some_and(text)
-                                || agent_kind.is_some_and(text)
-                                || title.is_some_and(text)
-                                || agent
-                                    .and_then(|agent| agent.display_agent.as_deref())
-                                    .is_some_and(text)
-                                || text(&pane.pane_id))
-                        {
+                        let search_text = if query.is_empty() {
+                            String::new()
+                        } else {
+                            [
+                                federated.then_some(endpoint.label.as_str()),
+                                Some(workspace.label.as_str()),
+                                Some(tab.label.as_str()),
+                                Some(label.as_str()),
+                                Some(meta),
+                                pane.cwd.as_deref(),
+                                agent.and_then(|agent| agent.name.as_deref()),
+                                title,
+                                agent_kind,
+                                agent.and_then(|agent| agent.display_agent.as_deref()),
+                                Some(pane.pane_id.as_str()),
+                            ]
+                            .into_iter()
+                            .flatten()
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                        };
+                        if filter(status) {
                             children.push(ClientNavigatorRow {
                                 depth: 1 + depth_offset,
                                 label,
@@ -407,6 +442,7 @@ pub(super) fn navigator_rows(
                                     "{} / {} / {}",
                                     workspace.label, tab.label, pane.pane_id
                                 ),
+                                search_text,
                                 agent: agent_kind.map(str::to_owned),
                                 status: Some(status),
                                 stale,
@@ -420,15 +456,26 @@ pub(super) fn navigator_rows(
                         }
                     }
                 }
-                if !filtering
-                    || !children.is_empty()
-                    || (navigator.filter.is_none() && !query.is_empty() && workspace_matches)
-                {
+                if !filtering || !children.is_empty() || !query.is_empty() {
                     endpoint_rows.push(ClientNavigatorRow {
                         depth: depth_offset,
                         label: workspace.label.clone(),
                         meta: workspace.branch.clone().unwrap_or_default(),
                         detail: workspace.new_workspace_cwd.clone(),
+                        search_text: if query.is_empty() {
+                            String::new()
+                        } else {
+                            [
+                                federated.then_some(endpoint.label.as_str()),
+                                Some(workspace.label.as_str()),
+                                workspace.branch.as_deref(),
+                                Some(workspace.new_workspace_cwd.as_str()),
+                            ]
+                            .into_iter()
+                            .flatten()
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                        },
                         agent: None,
                         status: None,
                         stale,
@@ -449,6 +496,7 @@ pub(super) fn navigator_rows(
                     label: endpoint.label.to_owned(),
                     meta: String::new(),
                     detail: String::new(),
+                    search_text: endpoint.label.to_owned(),
                     agent: None,
                     status: None,
                     stale,
@@ -461,13 +509,20 @@ pub(super) fn navigator_rows(
             rows.extend(endpoint_rows);
         }
     }
-    rows
+    if query.is_empty() {
+        rows
+    } else {
+        rank_navigator_rows(rows, &query)
+    }
 }
 
 pub(super) fn navigator_selected_index(
     rows: &[ClientNavigatorRow],
     navigator: &ClientNavigatorOverlay,
 ) -> Option<usize> {
+    if !navigator.query.trim().is_empty() {
+        return (!rows.is_empty()).then_some(0);
+    }
     match navigator.selected.as_ref() {
         Some(target) => rows.iter().position(|row| row.target == *target),
         None => rows
