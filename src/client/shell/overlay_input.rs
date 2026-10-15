@@ -653,6 +653,19 @@ impl ClientShellState {
                 return;
             }
             if search_focused {
+                // Navigation chords take precedence over search editing. Some
+                // terminals include generated text for control keys, which the
+                // text editor correctly treats as authoritative input.
+                if code == KeyCode::Char('p') && modifiers == KeyModifiers::CONTROL {
+                    self.move_navigator_selection(-1);
+                    outcome.repaint = true;
+                    return;
+                }
+                if code == KeyCode::Char('n') && modifiers == KeyModifiers::CONTROL {
+                    self.move_navigator_selection(1);
+                    outcome.repaint = true;
+                    return;
+                }
                 if let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut() {
                     if let Some(content_changed) = navigator.query.handle_key(key) {
                         if content_changed {
@@ -663,16 +676,12 @@ impl ClientShellState {
                         return;
                     }
                 }
-                if code == KeyCode::Up
-                    || code == KeyCode::Char('p') && modifiers == KeyModifiers::CONTROL
-                {
+                if code == KeyCode::Up {
                     self.move_navigator_selection(-1);
                     outcome.repaint = true;
                     return;
                 }
-                if code == KeyCode::Down
-                    || code == KeyCode::Char('n') && modifiers == KeyModifiers::CONTROL
-                {
+                if code == KeyCode::Down {
                     self.move_navigator_selection(1);
                     outcome.repaint = true;
                     return;
