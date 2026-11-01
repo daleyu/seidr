@@ -1,85 +1,90 @@
-# herdr
+# Seidr: use this Herdr fork
 
+Seidr still builds an executable named `herdr`; these are the commands used for
+our Mac switch, with shell equivalents for the backup/install script.
+Requires Rust 1.96.1 and Zig 0.16.0.
 
-<p align="center">
-  <img src="assets/logo.png" alt="herdr" width="100" />
-</p>
+## 1. Build
 
-<p align="center">
-  <a href="https://herdr.dev">herdr.dev</a> · <a href="#install">install</a> · <a href="https://herdr.dev/docs/quick-start/">quick start</a> · <a href="https://herdr.dev/docs/">docs</a>
-</p>
+Compile this checkout into an optimized executable.
 
-<p align="center">
-  English · <a href="README.zh-CN.md">简体中文</a>
-</p>
-
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-666666?labelColor=333333" alt="Apache 2.0 license" /></a>
-  <a href="https://github.com/herdrdev/herdr/releases"><img src="https://img.shields.io/github/downloads/herdrdev/herdr/total?labelColor=333333&color=666666" alt="total GitHub release downloads" /></a>
-  <a href="https://github.com/herdrdev/herdr/stargazers"><img src="https://img.shields.io/github/stars/herdrdev/herdr?labelColor=333333&color=666666&logo=github" alt="GitHub stars" /></a>
-  <a href="https://github.com/herdrdev/herdr/releases/latest"><img src="https://img.shields.io/github/v/release/herdrdev/herdr?label=release&labelColor=333333&color=666666" alt="latest stable release" /></a>
-  <a href="https://formulae.brew.sh/formula/herdr"><img src="https://img.shields.io/homebrew/v/herdr?label=homebrew&labelColor=333333&color=666666" alt="Homebrew version" /></a>
-  <a href="https://x.com/herdrdev"><img src="https://img.shields.io/badge/follow-%40herdrdev-000000?logo=x&logoColor=white" alt="follow @herdrdev on X" /></a>
-</p>
-
----
-
-https://github.com/user-attachments/assets/043ec09f-4bdd-41d5-aee0-8fda6b83e267
-
-**the runtime your coding agents live on.**
-
-- **detach without stopping work** — herdr keeps terminals running in a background server when you close the client or lose your SSH connection. after a server or machine restart, herdr restores the saved layout and can resume supported agent sessions; the original processes do not survive. [session state →](https://herdr.dev/docs/session-state/)
-- **several machines, one window** — keep local work and saved ssh machines together, with a combined agent list and independent reconnects. [remote machines →](https://herdr.dev/docs/connecting-machines/)
-- **never hunt for the stuck one** — every pane is marked working, blocked, or idle. when an agent stops and needs an answer, herdr says so.
-- **agent-native** — agents drive herdr through the cli and socket api: they can spawn panes, prompt each other, and wait until another agent is genuinely blocked. [agent skill →](https://herdr.dev/docs/agent-skill/)
-- **runs what you already run** — claude code, codex, cursor, opencode, grok and the rest. herdr doesn't wrap or replace them; it owns their terminals. building an agent? [add herdr support →](https://herdr.dev/docs/add-herdr-support/)
-- **keyboard and mouse, both first-class** — tmux-style prefix keys *and* click, drag, split. pick per moment, not per tool.
-- **plugins** — extend panes and workflows. [browse the marketplace →](https://herdr.dev/plugins/)
-- **one rust binary, no electron** — runs in whatever terminal you already use.
-
----
-
-## install
-
-```bash
-curl -fsSL https://herdr.dev/install.sh | sh
+```sh
+cd /Users/daleyu/stripe/seidr
+cargo build --release --locked
+./target/release/herdr --version
 ```
 
-or `brew install herdr` · `mise use -g herdr` · windows: `powershell -ExecutionPolicy Bypass -c "irm https://herdr.dev/install.ps1 | iex"` · [endpoint-protected Windows](https://herdr.dev/docs/windows-beta/) · [binaries](https://github.com/herdrdev/herdr/releases)
+## 2. Back up (first switch)
 
-then start it where the work lives:
+Save the current binary, shell configuration, and Herdr settings before replacing them.
 
-```bash
-herdr
+```sh
+seidr_backup="$HOME/.local/share/seidr/backups/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$seidr_backup"
+chmod 700 "$seidr_backup"
+cp "$(command -v herdr)" "$seidr_backup/herdr-before-seidr"
+cp "$HOME/.zshrc" "$seidr_backup/zshrc"
+cp "$HOME/.config/herdr/config.toml" "$seidr_backup/config.toml"
+tar --exclude='*.sock' -czf "$seidr_backup/config.tar.gz" -C "$HOME/.config" herdr
+if [ -d "$HOME/.local/state/herdr" ]; then
+  tar --exclude='*.sock' -czf "$seidr_backup/state.tar.gz" -C "$HOME/.local/state" herdr
+fi
 ```
 
-run your agents, split panes, walk away. `ctrl+b q` detaches, `herdr` reattaches. [quick start →](https://herdr.dev/docs/quick-start/)
+## 3. Install
 
-## docs
+Replace the local executable through a temporary file, leaving the mise installation available for rollback.
 
-everything lives at [herdr.dev/docs](https://herdr.dev/docs/): [quick start](https://herdr.dev/docs/quick-start/) · [concepts](https://herdr.dev/docs/concepts/) · [supported agents](https://herdr.dev/docs/agents/) · [keyboard](https://herdr.dev/docs/keyboard/) · [configuration](https://herdr.dev/docs/configuration/) · [session state](https://herdr.dev/docs/session-state/) · [connecting machines](https://herdr.dev/docs/connecting-machines/) · [remote](https://herdr.dev/docs/persistence-remote/) · [integrations](https://herdr.dev/docs/integrations/) · [add herdr support to your agent](https://herdr.dev/docs/add-herdr-support/) · [plugins](https://herdr.dev/docs/plugins/) · [socket api](https://herdr.dev/docs/socket-api/)
-
-## thanks
-
-every past sponsor and backer is listed in [SPONSORS.md](./SPONSORS.md) — thank you 🐑
-
-enterprise / partnership: hey@herdr.dev
-
-## agent instructions
-
-if you are an ai agent helping with this repository, read [`AGENTS.md`](./AGENTS.md) before making changes and read [`CONTRIBUTING.md`](./CONTRIBUTING.md) before opening issues or PRs.
-
-## development
-
-```bash
-git clone https://github.com/herdrdev/herdr
-cd herdr
-cargo build --release
-
-just test        # unit tests
-just check       # formatting, tests, and maintenance checks
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 755 target/release/herdr "$HOME/.local/bin/herdr.seidr-next" &&
+  mv -f "$HOME/.local/bin/herdr.seidr-next" "$HOME/.local/bin/herdr"
+cmp target/release/herdr "$HOME/.local/bin/herdr"
 ```
 
-## license
+## 4. Configure (already done on this Mac)
 
-Herdr is licensed under the [Apache License 2.0](LICENSE).
+Put the fork first on PATH and disable upstream version notifications.
+
+```sh
+# Add once, at the end of ~/.zshrc:
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+```toml
+# Merge into ~/.config/herdr/config.toml:
+[update]
+version_check = false
+```
+
+## 5. Switch the running server
+
+Use live handoff to move existing panes to the new server without stopping their processes.
+
+```sh
+"$HOME/.local/bin/herdr" status --json
+"$HOME/.local/bin/herdr" server live-handoff \
+  --import-exe "$HOME/.local/bin/herdr" \
+  --expected-protocol 22 --expected-version 0.9.5
+```
+
+This is the experimental handoff that succeeded for our 0.9.3 → 0.9.5 switch;
+confirm `live_handoff: true` before using it, and update the expected protocol/version
+when they change.
+
+## 6. Verify and reconnect
+
+Confirm a fresh shell selects the fork and the server reports the new version, then detach with **Ctrl+B, Q** and run `herdr` to reopen the client.
+
+```sh
+/bin/zsh -lic 'command -v herdr; herdr --version'
+"$HOME/.local/bin/herdr" status --json
+```
+
+After future edits, repeat **1, 3, 5, and 6**; installing a binary alone does not
+update an already-running server. Avoid `herdr update`, which still uses upstream releases.
+
+Our original backup is `~/.local/share/seidr/backups/20261101-174258`.
+Devboxes need a separate Linux build and server switch; updating this Mac does not update them.
+
+[Development instructions](AGENTS.md) · [Upstream docs](https://herdr.dev/docs/) · [License](LICENSE)
