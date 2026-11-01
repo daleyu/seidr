@@ -1027,9 +1027,9 @@ fn render_navigator_overlay(
         i.bottom() - 1,
         i.width,
         if n.search_focused {
-            " search type · move ↑↓/ctrl+n/p · open enter · back esc"
+            " type search · ctrl+g navigate · ↑↓/ctrl+n/p move · enter open · esc back"
         } else {
-            " ↑↓/j/k rows · ←→ workspace · / search · a/b/w/i/d filter · enter open · esc close"
+            " ctrl+g or / search · ↑↓/j/k rows · ←→ workspace · a/b/w/i/d filter · enter open · esc close"
         },
         Style::default().fg(p.overlay0).bg(p.panel_bg),
     );

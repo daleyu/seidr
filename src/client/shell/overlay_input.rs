@@ -637,6 +637,13 @@ impl ClientShellState {
                     ..
                 }))
             );
+            if code == KeyCode::Char('g') && modifiers == KeyModifiers::CONTROL {
+                if let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut() {
+                    navigator.search_focused = !search_focused;
+                }
+                outcome.repaint = true;
+                return;
+            }
             if code == KeyCode::Esc {
                 if search_focused {
                     if let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut() {

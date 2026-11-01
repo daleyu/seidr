@@ -940,6 +940,66 @@ fn copy_search_owns_prompt_repeat_highlights_selection_and_restore() {
 }
 
 #[test]
+fn navigator_starts_searching_and_ctrl_g_toggles_without_losing_the_query() {
+    for toggle in [&b"\x07"[..], &b"\x1b[103;5;103u"[..]] {
+        let mut projected = snapshot();
+        projected.panes[0].label = Some("writer".into());
+        let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+        state.set_snapshot(Box::new(projected));
+        state.set_pane_surface(surface());
+
+        assert!(state.handle_input_bytes(b"\x02g").actions.is_empty());
+        let frame = state.compose(106, 30).expect("search on open");
+        assert!(frame.cursor.as_ref().is_some_and(|cursor| cursor.visible));
+        let footer = |frame: &FrameData| {
+            frame.cells.iter().map(|cell| cell.symbol.as_str()).collect::<String>()
+        };
+        assert!(footer(&frame).contains("ctrl+g navigate"));
+        assert!(state.handle_input_bytes(b"wri").actions.is_empty());
+        assert!(matches!(
+            &state.overlay,
+            Some(ClientShellOverlay::Navigator(navigator))
+                if navigator.search_focused && navigator.query.as_str() == "wri"
+        ));
+
+        let toggle_outcome = state.handle_input_bytes(toggle);
+        assert!(toggle_outcome.repaint && toggle_outcome.actions.is_empty());
+        assert!(state.handle_input_bytes(b"j").actions.is_empty());
+        assert!(matches!(
+            &state.overlay,
+            Some(ClientShellOverlay::Navigator(navigator))
+                if !navigator.search_focused && navigator.query.as_str() == "wri"
+        ));
+        let frame = state.compose(106, 30).expect("navigation mode");
+        assert!(frame.cursor.is_none());
+        assert!(footer(&frame).contains("ctrl+g or / search"));
+
+        assert!(state.handle_input_bytes(toggle).actions.is_empty());
+        assert!(state.handle_input_bytes(b"ter").actions.is_empty());
+        assert!(matches!(
+            &state.overlay,
+            Some(ClientShellOverlay::Navigator(navigator))
+                if navigator.search_focused && navigator.query.as_str() == "writer"
+        ));
+        let frame = state.compose(106, 30).expect("search resumed");
+        assert!(frame.cursor.as_ref().is_some_and(|cursor| cursor.visible));
+        assert!(state.hits.navigator_rows.iter().any(|(_, target)| matches!(
+            target, ClientNavigatorTarget::Pane { pane_id, .. } if pane_id == "pane_1"
+        )));
+
+        state.handle_input_bytes(b"\x1b");
+        state.handle_input_bytes(b"\x1b");
+        assert!(state.overlay.is_none());
+        state.handle_input_bytes(b"\x02g");
+        assert!(matches!(
+            &state.overlay,
+            Some(ClientShellOverlay::Navigator(navigator))
+                if navigator.search_focused && navigator.query.is_empty()
+        ));
+    }
+}
+
+#[test]
 fn navigator_workspace_headings_use_the_active_themes_primary_text() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.config.theme_runtime.auto_switch = false;
