@@ -26,12 +26,13 @@ pub(in crate::client::shell) fn workspace_active_background(
 
 pub(in crate::client::shell) fn collapsed_sidebar_sections(
     area: Rect,
+    show_agent_panel: bool,
 ) -> (Rect, Option<u16>, Rect) {
     let content = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
     if content.is_empty() {
         return (Rect::default(), None, Rect::default());
     }
-    if content.height < 7 {
+    if !show_agent_panel || content.height < 7 {
         return (content, None, Rect::default());
     }
     let workspace_height = content.height.div_ceil(2);
@@ -56,7 +57,8 @@ pub(crate) fn render_collapsed_sidebar(
     let selection_background = workspace_selection_background(palette);
     let active_background = workspace_active_background(palette, selected_workspace_id.is_some());
     render_sidebar_background(buffer, area, palette);
-    let (workspace_area, divider_y, detail_area) = collapsed_sidebar_sections(area);
+    let (workspace_area, divider_y, detail_area) =
+        collapsed_sidebar_sections(area, config.show_agent_panel);
     for (index, workspace) in snapshot
         .workspaces
         .iter()
@@ -127,7 +129,10 @@ pub(crate) fn render_collapsed_sidebar(
         detail_area.width,
         detail_area.height.saturating_sub(1),
     );
-    for (index, pane_id) in super::ordered_agent_pane_ids(snapshot, config.agent_panel_sort)
+    for (index, pane_id) in config
+        .show_agent_panel
+        .then(|| super::ordered_agent_pane_ids(snapshot, config.agent_panel_sort))
+        .unwrap_or_default()
         .into_iter()
         .take(detail_content.height as usize)
         .enumerate()
@@ -196,6 +201,21 @@ pub(crate) fn render_collapsed_sidebar(
     );
 }
 
+pub(in crate::client::shell) fn expanded_sidebar_sections(
+    area: Rect,
+    split: f32,
+    show_agent_panel: bool,
+) -> (Rect, Rect) {
+    if show_agent_panel {
+        crate::ui::expanded_sidebar_sections(area, split)
+    } else {
+        (
+            Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height),
+            Rect::default(),
+        )
+    }
+}
+
 pub(crate) fn render_sidebar(
     buffer: &mut Buffer,
     area: Rect,
@@ -212,9 +232,12 @@ pub(crate) fn render_sidebar(
         Rect::new(area.right().saturating_sub(1), area.y, 1, area.height)
     };
     let (workspace_area, detail_area) =
-        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split);
-    hits.sidebar_section_divider =
-        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split);
+        expanded_sidebar_sections(area, state.sidebar_section_split, config.show_agent_panel);
+    hits.sidebar_section_divider = if config.show_agent_panel {
+        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split)
+    } else {
+        Rect::default()
+    };
     put_text(
         buffer,
         workspace_area.x,
@@ -375,32 +398,40 @@ pub(crate) fn render_sidebar(
         );
     }
 
-    let footer_y = workspace_area.bottom().saturating_sub(1);
+    let footer_area = Rect::new(
+        workspace_area.x,
+        workspace_area.y,
+        workspace_area
+            .width
+            .saturating_sub(u16::from(!config.show_agent_panel)),
+        workspace_area.height,
+    );
+    let footer_y = footer_area.bottom().saturating_sub(1);
     if config.mouse_capture {
         hits.new_workspace = Rect::new(
-            workspace_area.x,
+            footer_area.x,
             footer_y,
-            5.min(workspace_area.width),
-            u16::from(workspace_area.height > 0),
+            5.min(footer_area.width),
+            u16::from(footer_area.height > 0),
         );
         put_text(
             buffer,
-            workspace_area.x,
+            footer_area.x,
             footer_y,
-            workspace_area.width,
+            footer_area.width,
             " new",
             Style::default().fg(palette.overlay0),
         );
         let attention = super::super::global_menu::global_menu_attention(snapshot);
-        let launcher_width = if attention { 8 } else { 6 }.min(workspace_area.width);
+        let launcher_width = if attention { 8 } else { 6 }.min(footer_area.width);
         hits.global_launcher = Rect::new(
-            workspace_area.right().saturating_sub(launcher_width),
+            footer_area.right().saturating_sub(launcher_width),
             footer_y,
             launcher_width,
             1,
         );
         if attention {
-            let start_x = workspace_area.right().saturating_sub(6);
+            let start_x = footer_area.right().saturating_sub(6);
             put_text(
                 buffer,
                 start_x,
@@ -422,7 +453,7 @@ pub(crate) fn render_sidebar(
         } else {
             put_right_text(
                 buffer,
-                workspace_area,
+                footer_area,
                 footer_y,
                 "menu",
                 Style::default().fg(palette.overlay0),

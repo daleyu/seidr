@@ -21,7 +21,8 @@ pub(super) fn render_collapsed(
 ) {
     let palette = &config.palette;
     super::render::render_sidebar_background(buffer, area, palette);
-    let (workspace_area, divider_y, detail_area) = super::sidebar::collapsed_sidebar_sections(area);
+    let (workspace_area, divider_y, detail_area) =
+        super::sidebar::collapsed_sidebar_sections(area, config.show_agent_panel);
     let mut total_rows = 0usize;
     let mut selected_row = None;
     let reveal = std::mem::take(state.reveal_navigation_workspace);
@@ -249,10 +250,16 @@ pub(super) fn render_expanded(
     } else {
         Rect::new(area.right().saturating_sub(1), area.y, 1, area.height)
     };
-    let (workspace_area, detail_area) =
-        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split);
-    hits.sidebar_section_divider =
-        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split);
+    let (workspace_area, detail_area) = super::sidebar::expanded_sidebar_sections(
+        area,
+        state.sidebar_section_split,
+        config.show_agent_panel,
+    );
+    hits.sidebar_section_divider = if config.show_agent_panel {
+        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split)
+    } else {
+        Rect::default()
+    };
     put_text(
         buffer,
         workspace_area.x,
@@ -516,34 +523,42 @@ pub(super) fn render_expanded(
         super::scroll::render_list_scrollbar(buffer, track, metrics, palette);
     }
 
-    let footer_y = workspace_area.bottom().saturating_sub(1);
+    let footer_area = Rect::new(
+        workspace_area.x,
+        workspace_area.y,
+        workspace_area
+            .width
+            .saturating_sub(u16::from(!config.show_agent_panel)),
+        workspace_area.height,
+    );
+    let footer_y = footer_area.bottom().saturating_sub(1);
     if config.mouse_capture {
         let label = format!(" new · {}", active_endpoint_label(state));
         hits.new_workspace = Rect::new(
-            workspace_area.x,
+            footer_area.x,
             footer_y,
-            display_width(&label).min(workspace_area.width),
-            u16::from(workspace_area.height > 0),
+            display_width(&label).min(footer_area.width),
+            u16::from(footer_area.height > 0),
         );
         put_text(
             buffer,
-            workspace_area.x,
+            footer_area.x,
             footer_y,
-            workspace_area.width,
+            footer_area.width,
             &label,
             Style::default().fg(palette.overlay0),
         );
         let attention = active_snapshot.is_some_and(super::global_menu::global_menu_attention);
-        let width = if attention { 8 } else { 6 }.min(workspace_area.width);
+        let width = if attention { 8 } else { 6 }.min(footer_area.width);
         hits.global_launcher = Rect::new(
-            workspace_area.right().saturating_sub(width),
+            footer_area.right().saturating_sub(width),
             footer_y,
             width,
             1,
         );
         put_right_text(
             buffer,
-            workspace_area,
+            footer_area,
             footer_y,
             if attention { "● menu" } else { "menu" },
             Style::default().fg(if attention {

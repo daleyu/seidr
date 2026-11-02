@@ -848,6 +848,12 @@
           "description": "Toggle sidebar collapse."
         },
         {
+          "key": "keys.toggle_agent_panel",
+          "type": "keybinding",
+          "default": "unset",
+          "description": "Toggle the Agents section of the desktop sidebar. The chosen visibility is saved for this client endpoint."
+        },
+        {
           "key": "keys.indexed.tabs",
           "type": "string",
           "default": "unset",
@@ -1045,6 +1051,12 @@
           "type": "string",
           "default": "\"{hostname}: {workspace}\"",
           "description": "Title Herdr writes to the terminal it runs in. Tokens: {hostname}, {workspace}, {tab}, {pane}, {terminal_title}. Empty leaves the outer title alone."
+        },
+        {
+          "key": "ui.show_agent_panel",
+          "type": "boolean",
+          "default": "false",
+          "description": "Show the Agents section of the desktop sidebar initially. A saved toggle preference takes precedence."
         },
         {
           "key": "ui.agent_panel_sort",

@@ -24,6 +24,7 @@ pub(crate) struct ClientShellConfig {
     pub(super) spaces: SpacesSidebarConfig,
     pub(super) agents: crate::config::AgentsSidebarConfig,
     pub(super) agent_panel_sort: crate::config::AgentPanelSortConfig,
+    pub(super) show_agent_panel: bool,
     pub(super) status_indicators: crate::config::StatusIndicatorStyle,
     pub(super) sound_enabled: bool,
     pub(super) toast_delivery: crate::config::ToastDelivery,
@@ -905,6 +906,7 @@ pub(crate) struct ClientShellState {
     pub(super) sidebar_section_split: f32,
     pub(super) sidebar_section_split_manual: bool,
     pub(super) agent_panel_sort_manual: bool,
+    pub(super) show_agent_panel_manual: bool,
     pub(super) last_sidebar_divider_click: Option<std::time::Instant>,
     pub(super) chrome_drag: Option<ClientChromeDrag>,
     pub(super) workspace_press: Option<ClientWorkspacePress>,
@@ -1050,6 +1052,9 @@ impl ClientShellState {
         if let Some(sort) = preferences.agent_panel_sort {
             config.agent_panel_sort = sort;
         }
+        if let Some(visible) = preferences.show_agent_panel {
+            config.show_agent_panel = visible;
+        }
         let mut remote_collapsed_groups = HashMap::<ClientEndpointId, HashSet<String>>::new();
         for saved in preferences.remote_collapsed_groups {
             let Ok(profile_id) = crate::client::endpoint::ProfileId::parse(saved.profile_id) else {
@@ -1081,6 +1086,7 @@ impl ClientShellState {
             sidebar_section_split,
             sidebar_section_split_manual: preferences.sidebar_section_split.is_some(),
             agent_panel_sort_manual: preferences.agent_panel_sort.is_some(),
+            show_agent_panel_manual: preferences.show_agent_panel.is_some(),
             last_sidebar_divider_click: None,
             chrome_drag: None,
             workspace_press: None,

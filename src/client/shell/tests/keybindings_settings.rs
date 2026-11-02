@@ -965,3 +965,150 @@ fn resize_mode_reuses_endpoint_resize_and_stays_active_until_done() {
     assert!(state.handle_input_bytes(b"\r").actions.is_empty());
     assert_eq!(state.mode, ClientShellMode::Terminal);
 }
+
+#[test]
+fn toggle_agent_panel_is_unset_but_listed_in_keybinding_help() {
+    let config = Config::default();
+    assert!(!config.ui.show_agent_panel);
+    let (bindings, _) = config.live_keybinds_with_diagnostics().unwrap();
+    assert!(bindings.keybinds.toggle_agent_panel.bindings.is_empty());
+    let groups = crate::input::keybind_help_groups(&bindings.keybinds, &bindings.prefix);
+    assert!(groups
+        .iter()
+        .flat_map(|(_, entries)| entries)
+        .any(|(key, label)| { key == "unset" && label == "toggle agents panel" }));
+}
+
+#[test]
+fn toggle_agent_panel_reclaims_sidebar_height_and_clears_mouse_targets() {
+    for collapsed in [false, true] {
+        for binding in ["prefix+shift+a", "alt+a"] {
+            let config: Config =
+                toml::from_str(&format!("[keys]\ntoggle_agent_panel = {binding:?}\n")).unwrap();
+            assert!(config.collect_diagnostics().is_empty());
+            let profile = config.local_keybindings_profile_toml().unwrap();
+            let profiled = crate::config::keybindings_from_profile_toml(&profile).unwrap();
+            assert_eq!(
+                profiled.keybinds.toggle_agent_panel.label(),
+                config.keybinds().toggle_agent_panel.label(),
+            );
+            let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+            state.sidebar_collapsed = collapsed;
+            let mut projected = snapshot();
+            projected.agents.push(crate::protocol::ClientShellAgent {
+                pane_id: "pane_1".into(),
+                workspace_id: "ws_1".into(),
+                tab_id: "tab_1".into(),
+                name: Some("test-agent".into()),
+                display_agent: None,
+                agent: Some("codex".into()),
+                title: None,
+                terminal_title: None,
+                terminal_title_stripped: None,
+                agent_status: AgentStatus::Working,
+                state_change_seq: 1,
+                state_labels: Vec::new(),
+                tokens: Vec::new(),
+                focused: true,
+            });
+            state.set_snapshot(Box::new(projected));
+            state.set_pane_surface(surface());
+            state.compose(106, 30).expect("hidden agents frame");
+            let hidden_workspace_height = if collapsed {
+                0
+            } else {
+                state.hits.workspace_body.height
+            };
+            assert!(state.hits.agents.is_empty());
+            assert!(state.hits.sidebar_section_divider.is_empty());
+            let pane_layout = state.layout(106, 30).pane_surface;
+            let toggle_keys = || {
+                if binding.starts_with("prefix+") {
+                    vec![
+                        RawInputEvent::Key(TerminalKey::new(
+                            KeyCode::Char('b'),
+                            KeyModifiers::CONTROL,
+                        )),
+                        RawInputEvent::Key(TerminalKey::new(
+                            KeyCode::Char('a'),
+                            KeyModifiers::SHIFT,
+                        )),
+                    ]
+                } else {
+                    vec![RawInputEvent::Key(TerminalKey::new(
+                        KeyCode::Char('a'),
+                        KeyModifiers::ALT,
+                    ))]
+                }
+            };
+            let outcome = state.handle_raw_events(toggle_keys());
+            assert!(outcome.repaint);
+            assert!(!outcome.resize);
+            assert!(outcome.actions.is_empty());
+            assert!(outcome.requests.is_empty());
+            assert!(state.config.show_agent_panel);
+            state.compose(106, 30).expect("visible agents frame");
+            assert_eq!(state.hits.agents.len(), 1);
+            if !collapsed {
+                assert!(state.hits.workspace_body.height < hidden_workspace_height);
+                assert!(!state.hits.sidebar_section_divider.is_empty());
+            }
+            state.handle_raw_events(toggle_keys());
+            let frame = state.compose(106, 30).expect("hidden again frame");
+            assert!(!state.config.show_agent_panel);
+            assert!(state.hits.agents.is_empty());
+            assert!(state.hits.agent_body.is_empty());
+            assert!(state.hits.agent_sort_toggle.is_empty());
+            assert!(state.hits.agent_scrollbar.is_empty());
+            assert!(state.hits.sidebar_section_divider.is_empty());
+            assert_eq!(state.layout(106, 30).pane_surface, pane_layout);
+            let text: String = frame
+                .cells
+                .iter()
+                .map(|cell| cell.symbol.as_str())
+                .collect();
+            assert!(!text.contains(" agents"));
+            assert!(!text.contains("test-agent"));
+            if !collapsed {
+                assert_eq!(state.hits.workspace_body.height, hidden_workspace_height);
+            }
+        }
+    }
+}
+
+#[test]
+fn toggle_agent_panel_visibility_persists_and_overrides_config() {
+    let path = std::env::temp_dir().join(format!(
+        "herdr-agent-panel-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let config: Config = toml::from_str("[ui]\nshow_agent_panel = true\n").unwrap();
+    let mut state = ClientShellState::new(
+        ClientShellConfig::from_config(&config).with_preferences_path(path.clone()),
+    );
+    assert!(state.config.show_agent_panel);
+    let mut outcome = ClientShellInput::default();
+    state.record_binding(
+        crate::input::KeybindMatch::Action(crate::input::KeybindAction::ToggleAgentPanel),
+        &mut outcome,
+    );
+    assert!(!state.config.show_agent_panel);
+    let mut restored = ClientShellState::new(
+        ClientShellConfig::from_config(&config).with_preferences_path(path.clone()),
+    );
+    assert!(!restored.config.show_agent_panel);
+    assert!(restored.show_agent_panel_manual);
+    restored.record_binding(
+        crate::input::KeybindMatch::Action(crate::input::KeybindAction::ToggleAgentPanel),
+        &mut outcome,
+    );
+    let restored = ClientShellState::new(
+        ClientShellConfig::from_config(&Config::default()).with_preferences_path(path.clone()),
+    );
+    assert!(restored.config.show_agent_panel);
+    std::fs::remove_file(path).expect("remove agent panel preferences");
+}

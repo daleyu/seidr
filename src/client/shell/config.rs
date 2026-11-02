@@ -59,6 +59,9 @@ impl ClientShellState {
             agent_panel_sort: self
                 .agent_panel_sort_manual
                 .then_some(self.config.agent_panel_sort),
+            show_agent_panel: self
+                .show_agent_panel_manual
+                .then_some(self.config.show_agent_panel),
             collapsed_groups,
             remote_collapsed_groups,
         };
@@ -72,6 +75,7 @@ impl ClientShellState {
         match crate::config::load_live_config() {
             Ok(loaded) => {
                 let agent_panel_sort = self.config.agent_panel_sort;
+                let show_agent_panel = self.config.show_agent_panel;
                 let diagnostics = self.config.apply_live_config(
                     &loaded.config,
                     &loaded.diagnostics,
@@ -85,6 +89,9 @@ impl ClientShellState {
                 }
                 if !self.sidebar_width_manual {
                     self.sidebar_width = self.config.sidebar_width;
+                }
+                if self.show_agent_panel_manual {
+                    self.config.show_agent_panel = show_agent_panel;
                 }
                 if self.agent_panel_sort_manual {
                     self.config.agent_panel_sort = agent_panel_sort;
@@ -124,6 +131,7 @@ impl ClientShellConfig {
             spaces: config.ui.sidebar.spaces.clone(),
             agents: config.ui.sidebar.agents.clone(),
             agent_panel_sort: config.ui.agent_panel_sort,
+            show_agent_panel: config.ui.show_agent_panel,
             status_indicators: config.ui.status_indicators,
             sound_enabled: config.ui.sound.enabled,
             toast_delivery: config.ui.toast.delivery,
@@ -351,6 +359,7 @@ impl ClientShellConfig {
                 self.spaces = ui.sidebar.spaces.clone();
                 self.agents = ui.sidebar.agents.clone();
                 self.agent_panel_sort = ui.agent_panel_sort;
+                self.show_agent_panel = ui.show_agent_panel;
                 self.status_indicators = ui.status_indicators;
                 self.sound_enabled = ui.sound.enabled;
                 self.toast_delivery = ui.toast.delivery;
@@ -480,6 +489,7 @@ mod tests {
         let mut shell = ClientShellConfig::from_config(&Config::default());
         let mut next = Config::default();
         next.ui.sidebar_width = 31;
+        next.ui.show_agent_panel = true;
         next.ui.tab_bar_position = TabBarPositionConfig::Bottom;
         next.ui.agent_panel_sort = crate::config::AgentPanelSortConfig::Priority;
         next.ui.status_indicators = crate::config::StatusIndicatorStyle::Symbols;
@@ -490,6 +500,7 @@ mod tests {
 
         assert!(diagnostics.is_empty());
         assert_eq!(shell.sidebar_width, 31);
+        assert!(shell.show_agent_panel);
         assert_eq!(shell.tab_bar_position, TabBarPositionConfig::Bottom);
         assert_eq!(
             shell.agent_panel_sort,

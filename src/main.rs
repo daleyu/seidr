@@ -194,6 +194,7 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # resize_pane_up = ""     # optional, e.g. "ctrl+shift+alt+up"
 # resize_pane_right = ""  # optional, e.g. "ctrl+shift+alt+right"
 # toggle_sidebar = "prefix+b"
+# toggle_agent_panel = ""
 
 # Navigate-mode movement. These local shortcuts win while navigate mode is open.
 # They are independent from focus_pane_*. Do not include prefix+, esc, enter, tab, or 1..9 here.
@@ -337,6 +338,7 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Agent panel ordering: "spaces" (grouped by space) or "priority" (attention queue).
 # "workspaces" is accepted as an alias for "spaces".
 # agent_panel_sort = "spaces"
+# show_agent_panel = false
 
 # Agent status indicators: "dots" preserves the compact color marks; "symbols" uses
 # distinct static glyphs for blocked, working, done, idle, and unknown states.

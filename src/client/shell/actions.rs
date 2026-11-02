@@ -19,6 +19,15 @@ impl ClientShellState {
                 outcome.resize = true;
                 self.persist_chrome_preferences(outcome);
             }
+            crate::input::KeybindMatch::Action(crate::input::KeybindAction::ToggleAgentPanel) => {
+                self.config.show_agent_panel = !self.config.show_agent_panel;
+                self.show_agent_panel_manual = true;
+                self.agent_scroll = 0;
+                self.reveal_navigation_workspace = true;
+                self.reveal_focused_workspace = true;
+                outcome.repaint = true;
+                self.persist_chrome_preferences(outcome);
+            }
             crate::input::KeybindMatch::Action(action) => {
                 if self.workspace_preview_action_blocked()
                     && matches!(

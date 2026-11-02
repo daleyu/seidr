@@ -160,6 +160,7 @@ fn focused_workspace_change_reveals_new_workspace_in_full_sidebar() {
         .collect();
 
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.config.show_agent_panel = true;
     state.set_snapshot(Box::new(initial));
     state.set_pane_surface(surface());
     state.compose(106, 20).expect("full sidebar");
@@ -194,6 +195,7 @@ fn focused_workspace_change_reveals_new_workspace_in_full_sidebar() {
 #[test]
 fn client_owned_sidebar_dividers_resize_live() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.config.show_agent_panel = true;
     state.set_snapshot(Box::new(snapshot()));
     state.set_pane_surface(surface());
     state.compose(106, 30).expect("expanded sidebar");

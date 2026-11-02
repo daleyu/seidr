@@ -24,6 +24,8 @@ pub(super) struct ClientChromePreferences {
     pub(super) sidebar_collapsed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) agent_panel_sort: Option<crate::config::AgentPanelSortConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) show_agent_panel: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(super) collapsed_groups: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -120,6 +122,7 @@ mod tests {
 
         assert_eq!(preferences.collapsed_groups, ["/repo"]);
         assert!(preferences.remote_collapsed_groups.is_empty());
+        assert_eq!(preferences.show_agent_panel, None);
     }
 
     #[test]

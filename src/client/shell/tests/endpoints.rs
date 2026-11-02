@@ -60,6 +60,7 @@ fn current_workspace_view() -> crate::api::schema::AgentViewSetParams {
 
 fn state_with_remote() -> (ClientShellState, ClientEndpointId) {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.config.show_agent_panel = true;
     let profile = remote_profile();
     let endpoint_id = ClientEndpointId::Ssh(profile.id.clone());
     state.set_endpoint_catalog(&[profile]);
@@ -1444,6 +1445,7 @@ fn aggregate_agents_use_configured_rows_machine_token_and_status_colors() {
     use crate::config::{AgentSidebarToken, StatusIndicatorStyle};
 
     let mut config = Config::default();
+    config.ui.show_agent_panel = true;
     config.ui.status_indicators = StatusIndicatorStyle::Symbols;
     config.ui.sidebar.agents.rows = vec![vec![
         AgentSidebarToken::StateIcon,
@@ -1508,6 +1510,7 @@ fn current_workspace_agent_view_excludes_same_workspace_id_on_other_machine() {
     use crate::config::AgentSidebarToken;
 
     let mut config = Config::default();
+    config.ui.show_agent_panel = true;
     config.ui.sidebar.agents.rows =
         vec![vec![AgentSidebarToken::Machine, AgentSidebarToken::Agent]];
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
@@ -1574,6 +1577,7 @@ fn current_workspace_or_blocked_keeps_foreign_attention_only() {
     use crate::config::AgentSidebarToken;
 
     let mut config = Config::default();
+    config.ui.show_agent_panel = true;
     config.ui.sidebar.agents.rows =
         vec![vec![AgentSidebarToken::Machine, AgentSidebarToken::Agent]];
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
@@ -1644,6 +1648,7 @@ fn selected_default_view_ignores_inactive_endpoint_projection() {
     use crate::config::AgentSidebarToken;
 
     let mut config = Config::default();
+    config.ui.show_agent_panel = true;
     config.ui.sidebar.agents.rows =
         vec![vec![AgentSidebarToken::Machine, AgentSidebarToken::Agent]];
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
@@ -1741,6 +1746,7 @@ fn legacy_custom_views_keep_v1_per_endpoint_projection() {
     use crate::config::AgentSidebarToken;
 
     let mut config = Config::default();
+    config.ui.show_agent_panel = true;
     config.ui.sidebar.agents.rows =
         vec![vec![AgentSidebarToken::Machine, AgentSidebarToken::Agent]];
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
@@ -1786,6 +1792,7 @@ fn selected_custom_sort_orders_rendering_and_indexed_navigation() {
     use crate::config::AgentSidebarToken;
 
     let mut config = Config::default();
+    config.ui.show_agent_panel = true;
     config.ui.agent_panel_sort = crate::config::AgentPanelSortConfig::Priority;
     config.ui.sidebar.agents.rows =
         vec![vec![AgentSidebarToken::Machine, AgentSidebarToken::Agent]];
@@ -1917,6 +1924,7 @@ fn aggregate_priority_uses_client_observed_recency_across_machines() {
     use crate::config::AgentSidebarToken;
 
     let mut config = Config::default();
+    config.ui.show_agent_panel = true;
     config.ui.agent_panel_sort = crate::config::AgentPanelSortConfig::Priority;
     config.ui.sidebar.agents.rows =
         vec![vec![AgentSidebarToken::Machine, AgentSidebarToken::Agent]];
@@ -3019,4 +3027,50 @@ fn navigator_foreign_workspace_heading_keeps_the_workspace_target() {
             target: Some(ClientEndpointFocusTarget::Workspace(workspace_id)),
         }] if activated == &endpoint_id && workspace_id == "ws_1"
     ));
+}
+
+#[test]
+fn toggle_agent_panel_hides_all_machines_without_changing_runtime_state() {
+    for collapsed in [false, true] {
+        let (mut state, remote) = state_with_remote();
+        let mut local = snapshot();
+        local.agents = vec![agent("local agent", AgentStatus::Idle, 1)];
+        state.set_snapshot(Box::new(local));
+        let mut projection = snapshot();
+        projection.boot_id = "remote-boot".into();
+        projection.agents = vec![agent("remote agent", AgentStatus::Blocked, 1)];
+        state.set_endpoint_snapshot(&remote, Box::new(projection));
+        state.sidebar_collapsed = collapsed;
+        state.compose(106, 30).expect("visible combined agents");
+        assert_eq!(state.hits.endpoint_agents.len(), 2);
+        let visible_body_height = state.hits.workspace_body.height;
+        let endpoint_before = state.active_endpoint_id.clone();
+        let mut outcome = ClientShellInput::default();
+        state.record_binding(
+            crate::input::KeybindMatch::Action(crate::input::KeybindAction::ToggleAgentPanel),
+            &mut outcome,
+        );
+        let frame = state.compose(106, 30).expect("hidden combined agents");
+        assert!(outcome.actions.is_empty());
+        assert!(outcome.requests.is_empty());
+        assert_eq!(state.active_endpoint_id, endpoint_before);
+        assert!(state.hits.endpoint_agents.is_empty());
+        assert!(state.hits.agent_sort_toggle.is_empty());
+        assert!(state.hits.sidebar_section_divider.is_empty());
+        if !collapsed {
+            assert!(state.hits.workspace_body.height > visible_body_height);
+        }
+        let text: String = frame
+            .cells
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect();
+        assert!(!text.contains(" agents"));
+        state.record_binding(
+            crate::input::KeybindMatch::Action(crate::input::KeybindAction::ToggleAgentPanel),
+            &mut outcome,
+        );
+        state.compose(106, 30).expect("restored combined agents");
+        assert_eq!(state.hits.endpoint_agents.len(), 2);
+    }
 }
