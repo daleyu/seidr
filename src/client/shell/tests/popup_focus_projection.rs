@@ -103,6 +103,7 @@ fn modal_paste_target_requires_a_focused_editable_client_field() {
 
     state.overlay = None;
     state.copy_mode = Some(ClientCopyModeState {
+        vim_input: ClientCopyVimInput::default(),
         pane_id: "pane_1".into(),
         content_revision: 0,
         geometry: (80, 24),

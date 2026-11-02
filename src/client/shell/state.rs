@@ -666,6 +666,7 @@ pub(super) enum PendingEndpointKind {
         origin: crate::api::schema::PaneTextPoint,
         session_generation: u64,
     },
+    CopyFind(ClientCopyFindRequest),
     CopySearch {
         pane_id: String,
         origin: crate::api::schema::PaneTextPoint,
@@ -820,11 +821,37 @@ pub(super) struct ClientCopySearchPrompt {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum ClientCopyOperation {
     Motion(crate::api::schema::PaneCopyMotion),
+    Find(ClientCopyFind),
     Search {
         query: String,
         direction: crate::api::schema::PaneCopySearchDirection,
         repeat: bool,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct ClientCopyFind {
+    pub(super) backward: bool,
+    pub(super) count: u32,
+    pub(super) target: String,
+}
+
+#[derive(Debug)]
+pub(super) struct ClientCopyFindRequest {
+    pub(super) pane_id: String,
+    pub(super) origin: crate::api::schema::PaneTextPoint,
+    pub(super) content_revision: u64,
+    pub(super) session_generation: u64,
+    pub(super) geometry: (u16, u16),
+    pub(super) alternate_screen_active: bool,
+    pub(super) find: ClientCopyFind,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct ClientCopyVimInput {
+    pub(super) count: Option<u32>,
+    pub(super) find: Option<ClientCopyFind>,
+    pub(super) last_find: Option<ClientCopyFind>,
 }
 
 pub(super) struct ClientCopySearchResult {
@@ -837,6 +864,7 @@ pub(super) struct ClientCopySearchResult {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct ClientCopyModeState {
+    pub(super) vim_input: ClientCopyVimInput,
     pub(super) pane_id: String,
     pub(super) content_revision: u64,
     pub(super) geometry: (u16, u16),
@@ -1772,6 +1800,7 @@ impl ClientShellState {
                     copy_mode.geometry = geometry;
                     copy_mode.alternate_screen_active = pane.alternate_screen_active;
                     if coordinates_changed {
+                        copy_mode.vim_input = ClientCopyVimInput::default();
                         copy_mode.selection = None;
                         invalidated_copy_pane = Some(copy_mode.pane_id.clone());
                     }

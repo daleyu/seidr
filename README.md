@@ -122,8 +122,29 @@ command you just launched; they do not identify an already-open TUI client.
 During our switch, the server was 0.9.5 while the open client still ran mise's
 0.9.3 executable; reopening via the absolute path is required to load the fork's UI.
 
-After future edits, repeat **1, 3, 5, and 6**; installing a binary alone does not
+After server or shared runtime edits, repeat **1, 3, 5, and 6**; installing a binary alone does not
 update an already-running server. Avoid `herdr update`, which still uses upstream releases.
+
+## Client-only changes
+
+For changes confined to the client UI or keyboard handling, rebuild and install:
+
+```sh
+cd /Users/daleyu/stripe/seidr
+just build
+install -m 755 target/release/herdr ~/.local/bin/herdr.seidr-next &&
+  mv -f ~/.local/bin/herdr.seidr-next ~/.local/bin/herdr
+```
+
+Then detach with **Ctrl+B, then Q**, and run this in the outer terminal:
+
+```sh
+/Users/daleyu/.local/bin/herdr
+```
+
+This loads the rebuilt client and reconnects to the running server. Client-only
+changes need no server handoff. Changes to shared runtime or protocol behavior
+also require the server switch in step 5.
 
 Our original backup is `~/.local/share/seidr/backups/20261101-174258`.
 Devboxes need a separate Linux build and server switch; updating this Mac does not update them.

@@ -193,6 +193,9 @@ impl ClientShellState {
     }
 
     fn prepare_committed_text(&mut self, text: &str, outcome: &mut ClientShellInput) -> bool {
+        if self.insert_copy_find_text(text, outcome) {
+            return true;
+        }
         if !(self.mode == ClientShellMode::Navigate && self.workspace_preview_action_blocked())
             && self.insert_copy_search_text(text)
         {

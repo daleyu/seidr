@@ -520,11 +520,11 @@ pub(super) fn navigator_selected_index(
     rows: &[ClientNavigatorRow],
     navigator: &ClientNavigatorOverlay,
 ) -> Option<usize> {
-    if !navigator.query.trim().is_empty() {
-        return (!rows.is_empty()).then_some(0);
-    }
     match navigator.selected.as_ref() {
         Some(target) => rows.iter().position(|row| row.target == *target),
+        // Query edits clear the selection so a new search starts at the best
+        // match, while explicit keyboard or mouse selections remain actionable.
+        None if !navigator.query.trim().is_empty() => (!rows.is_empty()).then_some(0),
         None => rows
             .iter()
             .position(|row| matches!(row.target, ClientNavigatorTarget::Pane { .. }))

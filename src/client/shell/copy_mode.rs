@@ -78,6 +78,7 @@ impl ClientShellState {
                 (pane.content_revision, pane.alternate_screen_active)
             });
         self.copy_mode = Some(ClientCopyModeState {
+            vim_input: ClientCopyVimInput::default(),
             pane_id,
             content_revision,
             geometry: (hit.inner_rect.width, hit.inner_rect.height),
@@ -107,6 +108,9 @@ impl ClientShellState {
         outcome: &mut ClientShellInput,
     ) {
         if self.route_copy_search_prompt_key(key, outcome) {
+            return;
+        }
+        if self.route_copy_vim_motion(key, outcome) {
             return;
         }
         match key.code {
@@ -503,7 +507,12 @@ impl ClientShellState {
             .cloned()
     }
 
-    fn move_copy_cursor(&mut self, row_delta: i16, col_delta: i16, outcome: &mut ClientShellInput) {
+    pub(super) fn move_copy_cursor(
+        &mut self,
+        row_delta: i64,
+        col_delta: i16,
+        outcome: &mut ClientShellInput,
+    ) {
         let Some(copy_mode) = self.copy_mode.as_mut() else {
             return;
         };
@@ -528,12 +537,12 @@ impl ClientShellState {
             copy_mode.cursor.row = copy_mode
                 .cursor
                 .row
-                .saturating_sub(u32::from(row_delta.unsigned_abs()));
+                .saturating_sub(row_delta.unsigned_abs().min(u64::from(u32::MAX)) as u32);
         } else if row_delta > 0 {
             copy_mode.cursor.row = copy_mode
                 .cursor
                 .row
-                .saturating_add(u32::from(row_delta as u16))
+                .saturating_add(row_delta.min(i64::from(u32::MAX)) as u32)
                 .min(total_rows.saturating_sub(1).min(u32::MAX as usize) as u32);
         }
         self.reveal_copy_cursor(outcome, false);
@@ -722,6 +731,31 @@ impl ClientShellState {
             let pane_id = copy_mode.pane_id.clone();
             let origin = copy_mode.cursor;
             let (method, kind) = match operation {
+                ClientCopyOperation::Find(find) => (
+                    crate::api::schema::Method::PaneSelectionRead(
+                        crate::api::schema::PaneSelectionReadParams {
+                            pane_id: pane_id.clone(),
+                            anchor: crate::api::schema::PaneTextPoint {
+                                row: origin.row,
+                                col: 0,
+                            },
+                            cursor: crate::api::schema::PaneTextPoint {
+                                row: origin.row,
+                                col: copy_mode.geometry.0.saturating_sub(1),
+                            },
+                            content_revision: Some(copy_mode.content_revision),
+                        },
+                    ),
+                    PendingEndpointKind::CopyFind(ClientCopyFindRequest {
+                        pane_id,
+                        origin,
+                        content_revision: copy_mode.content_revision,
+                        session_generation,
+                        geometry: copy_mode.geometry,
+                        alternate_screen_active: copy_mode.alternate_screen_active,
+                        find,
+                    }),
+                ),
                 ClientCopyOperation::Motion(motion) => (
                     crate::api::schema::Method::PaneCopyMotion(
                         crate::api::schema::PaneCopyMotionParams {

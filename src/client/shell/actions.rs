@@ -737,6 +737,9 @@ impl ClientShellState {
                     Err(_) => (true, replay_action(replay)),
                 };
             }
+            PendingEndpointKind::CopyFind(request) => {
+                return self.complete_copy_find(request, result);
+            }
             PendingEndpointKind::CopyMotion {
                 pane_id,
                 origin,

@@ -19,6 +19,7 @@ fn pasted_help_and_copy_queries_normalize_single_line_text() {
     state.overlay = None;
     state.mode = ClientShellMode::Copy;
     state.copy_mode = Some(ClientCopyModeState {
+        vim_input: ClientCopyVimInput::default(),
         pane_id: "pane_1".into(),
         content_revision: 0,
         geometry: (80, 24),
@@ -952,7 +953,11 @@ fn navigator_starts_searching_and_ctrl_g_toggles_without_losing_the_query() {
         let frame = state.compose(106, 30).expect("search on open");
         assert!(frame.cursor.as_ref().is_some_and(|cursor| cursor.visible));
         let footer = |frame: &FrameData| {
-            frame.cells.iter().map(|cell| cell.symbol.as_str()).collect::<String>()
+            frame
+                .cells
+                .iter()
+                .map(|cell| cell.symbol.as_str())
+                .collect::<String>()
         };
         assert!(footer(&frame).contains("ctrl+g navigate"));
         assert!(state.handle_input_bytes(b"wri").actions.is_empty());
@@ -1627,6 +1632,58 @@ fn navigator_narrow_layout_and_long_search_stay_inside_the_popup() {
         assert!(super::super::contains(popup, (cursor.x, cursor.y)));
         assert!(state.hits.navigator_rows.is_empty());
         assert!(popup.right() <= width && popup.bottom() <= height);
+    }
+}
+
+#[test]
+fn navigator_search_keeps_keyboard_selection_until_the_query_changes() {
+    for generated_text in [false, true] {
+        let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+        state.set_snapshot(Box::new(navigator_scale_snapshot(1, 1, 4)));
+        state.set_pane_surface(surface());
+        state.open_navigator_overlay();
+        state.handle_input_bytes(b"terminal");
+
+        let selected = |state: &ClientShellState| {
+            let Some(ClientShellOverlay::Navigator(navigator)) = &state.overlay else {
+                panic!("navigator");
+            };
+            let rows = render::client_navigator_rows(
+                &state.endpoints,
+                &state.active_endpoint_id,
+                navigator,
+            );
+            super::super::aggregate_navigation::navigator_selected_index(&rows, navigator)
+        };
+        assert_eq!(selected(&state), Some(0));
+        for (ch, expected) in [('n', 1), ('n', 2), ('p', 1)] {
+            let key = crate::input::TerminalKey::new(KeyCode::Char(ch), KeyModifiers::CONTROL)
+                .with_generated_text(generated_text.then(|| ch.to_string()));
+            state.handle_raw_events(vec![RawInputEvent::Key(key)]);
+            let frame = state.compose(106, 30).expect("filtered navigator");
+            assert_eq!(selected(&state), Some(expected));
+            let (rect, _) = &state.hits.navigator_rows[expected];
+            let buffer = frame.to_ratatui_buffer().expect("navigator buffer");
+            assert_eq!(buffer[(rect.x, rect.y)].bg, state.config.palette.accent);
+            let Some(ClientShellOverlay::Navigator(navigator)) = &state.overlay else {
+                panic!("navigator");
+            };
+            assert_eq!(navigator.query.as_str(), "terminal");
+        }
+
+        // Editing the query starts again at the best match.
+        state.handle_input_bytes(b" ");
+        assert_eq!(selected(&state), Some(0));
+        state.handle_input_bytes(b"\x0e\x0e");
+        assert_eq!(selected(&state), Some(2));
+        let outcome = state.handle_input_bytes(b"\r");
+        assert!(state.overlay.is_none());
+        assert!(outcome.actions.iter().any(|action| matches!(
+            action,
+            ClientShellAction::Endpoint { request, .. }
+                if matches!(&request.method, crate::api::schema::Method::PaneFocus(target)
+                    if target.pane_id == "pane_0_0_2")
+        )));
     }
 }
 
