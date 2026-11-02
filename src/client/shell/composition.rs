@@ -21,6 +21,7 @@ fn restore_mode_bar(
 
 impl ClientShellState {
     fn compose_unavailable(&mut self, cols: u16, rows: u16) -> FrameData {
+        self.copy_gutter = None;
         let layout = self.layout(cols, rows);
         let mut buffer = Buffer::empty(Rect::new(0, 0, cols, rows));
         buffer.set_style(
@@ -205,6 +206,7 @@ impl ClientShellState {
             _ => (None, None),
         };
         let mut buffer = Buffer::empty(Rect::new(0, 0, cols, rows));
+        self.copy_gutter = None;
         self.hits = render::render_shell(
             &mut buffer,
             layout,
@@ -446,6 +448,23 @@ impl ClientShellState {
                         frame.replace_from_ratatui_buffer_preserving_effects(&composed, None);
                     } else {
                         frame.cursor = None;
+                    }
+                }
+            }
+        }
+        if self.mode == ClientShellMode::Copy {
+            if let Some(copy_mode) = self.copy_mode.as_ref() {
+                if let Some(hit) = self.hits.panes.iter().find(|hit| {
+                    hit.pane_id == copy_mode.pane_id
+                        && client_copy_surface_coherent(Some(copy_mode), hit)
+                }) {
+                    if let Some(gutter) = super::copy_gutter::ClientCopyGutter::new(copy_mode, hit)
+                    {
+                        gutter.render(&mut frame, copy_mode, &self.config.palette);
+                        // Native image placements use the unshifted terminal coordinates.
+                        // Hide them in this pane while its text is projected into copy mode.
+                        occlusion.cover(hit.inner_rect);
+                        self.copy_gutter = Some(gutter);
                     }
                 }
             }

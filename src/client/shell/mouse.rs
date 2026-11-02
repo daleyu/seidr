@@ -189,6 +189,10 @@ impl ClientShellState {
         metrics: Option<crate::pane::ScrollMetrics>,
         outcome: &mut ClientShellInput,
     ) {
+        let column = hit
+            .inner_rect
+            .x
+            .saturating_add(self.pane_source_column(hit, column));
         if self.word_selection_gesture.is_some() {
             let viewport_row = row
                 .saturating_sub(hit.inner_rect.y)
@@ -217,7 +221,12 @@ impl ClientShellState {
             .is_some_and(crate::selection::Selection::is_dragging);
         let moved_from_anchor = self.selection.as_ref().is_some_and(|selection| {
             let (anchor_row, anchor_col) = selection.anchor_screen_pos(hit.inner_rect, metrics);
-            anchor_row != row || anchor_col != column
+            anchor_row != row
+                || anchor_col
+                    != hit
+                        .inner_rect
+                        .x
+                        .saturating_add(self.pane_source_column(hit, column))
         });
         self.update_selection_cursor_with_metrics(hit, column, row, metrics, outcome);
         let is_dragging = self
@@ -1780,6 +1789,14 @@ impl ClientShellState {
         if self.scroll_in_progress_selection(mouse, outcome) {
             return;
         }
+        if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            && self.hits.panes.iter().any(|hit| {
+                self.copy_gutter_for_hit(hit)
+                    .is_some_and(|gutter| gutter.contains_number(mouse.column, mouse.row))
+            })
+        {
+            return;
+        }
 
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Right) => {
@@ -2244,7 +2261,7 @@ impl ClientShellState {
                         let click = ClientPaneClick {
                             pane_id: hit.pane_id.clone(),
                             viewport_row: mouse.row.saturating_sub(hit.inner_rect.y),
-                            col: mouse.column.saturating_sub(hit.inner_rect.x),
+                            col: self.pane_source_column(&hit, mouse.column),
                             at: std::time::Instant::now(),
                         };
                         if mouse.modifiers.is_empty()
@@ -2265,7 +2282,7 @@ impl ClientShellState {
                             self.selection = Some(crate::selection::Selection::anchor(
                                 hit.pane_id.clone(),
                                 mouse.row.saturating_sub(hit.inner_rect.y),
-                                mouse.column.saturating_sub(hit.inner_rect.x),
+                                self.pane_source_column(&hit, mouse.column),
                                 hit.scroll,
                             ));
                         }
@@ -2337,10 +2354,14 @@ impl ClientShellState {
 
     fn pane_mouse_position(&self, hit: &PaneHit, mouse: MouseEvent) -> ClientMousePosition {
         let cell = ClientMousePosition::Cell {
-            column: mouse.column.saturating_sub(hit.inner_rect.x),
+            column: self.pane_source_column(hit, mouse.column),
             row: mouse.row.saturating_sub(hit.inner_rect.y),
         };
-        if hit.sgr_pixel_mouse && hit.pixel_width > 0 && hit.pixel_height > 0 {
+        if self.copy_gutter_for_hit(hit).is_none()
+            && hit.sgr_pixel_mouse
+            && hit.pixel_width > 0
+            && hit.pixel_height > 0
+        {
             self.host_mouse_pixels
                 .and_then(|pixels| {
                     pixels

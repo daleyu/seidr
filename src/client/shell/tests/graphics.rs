@@ -406,7 +406,7 @@ fn every_dialog_and_menu_occludes_its_panel_not_the_whole_screen() {
 }
 
 #[test]
-fn selection_copy_cursor_and_search_hide_only_the_highlighted_images() {
+fn copy_gutter_hides_unshifted_native_images_and_restores_them_on_exit() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));
     let layout = state.layout(106, 20);
@@ -439,16 +439,12 @@ fn selection_copy_cursor_and_search_hide_only_the_highlighted_images() {
             end: crate::api::schema::PaneTextPoint { row: 0, col: 2 },
         });
     let frame = state.compose(106, 20).unwrap();
-    for point in &points[..3] {
+    for point in &points {
         assert!(
             !is_placed(&frame.graphics.clone().into_inline_bytes(), *point),
             "{point:?}"
         );
     }
-    assert!(is_placed(
-        &frame.graphics.clone().into_inline_bytes(),
-        points[3]
-    ));
     state.mode = ClientShellMode::Terminal;
     state.copy_mode = None;
     state.selection = None;

@@ -5,6 +5,7 @@ use crate::protocol::{
     PaneSurfaceSplit, PaneSurfaceSplitDirection, SurfaceRect,
 };
 use crossterm::event::MouseEvent;
+mod copy_gutter;
 mod copy_vim;
 mod text_editing;
 

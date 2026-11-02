@@ -839,9 +839,13 @@ fn copy_search_owns_prompt_repeat_highlights_selection_and_restore() {
     let frame = state.compose(106, 20).expect("search frame");
     let hit = state.hits.panes[0].clone();
     let viewport_top = 5u16;
+    let gutter = state.copy_gutter.expect("copy gutter");
     let restored = frame.to_ratatui_buffer().expect("search frame buffer");
     let highlighted = restored
-        .cell((hit.inner_rect.x + 2, hit.inner_rect.y + (5 - viewport_top)))
+        .cell((
+            hit.inner_rect.x + gutter.width + 2 - gutter.left_col,
+            hit.inner_rect.y + (5 - viewport_top),
+        ))
         .expect("highlighted search cell");
     assert_eq!(highlighted.bg, state.config.palette.accent);
 

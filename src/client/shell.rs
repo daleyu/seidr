@@ -9,6 +9,7 @@ use workspace_navigation::{PendingWorkspaceHighlight, WorkspaceNavigationTarget}
 mod composition;
 mod config;
 mod context_menu;
+mod copy_gutter;
 mod copy_mode;
 mod copy_motions;
 mod endpoint_agent_state;
