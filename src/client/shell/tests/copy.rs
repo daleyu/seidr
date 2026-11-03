@@ -1832,13 +1832,13 @@ fn navigator_render_scale_profile() {
 #[test]
 #[ignore = "manual scoped navigator composition scaling profile"]
 fn scoped_navigator_render_scale_profile() {
-    for panes in [1, 15] {
+    for (workspaces, panes) in [(1, 1), (1, 15), (15, 1)] {
         for scope in [
             ClientNavigatorScope::All,
             ClientNavigatorScope::Machines,
             ClientNavigatorScope::Agents,
         ] {
-            let mut snapshot = navigator_scale_snapshot(1, 1, panes);
+            let mut snapshot = navigator_scale_snapshot(workspaces, 1, panes);
             snapshot.agents = snapshot
                 .panes
                 .iter()
@@ -1874,7 +1874,7 @@ fn scoped_navigator_render_scale_profile() {
                 std::hint::black_box(state.compose(106, 30).expect("navigator frame"));
             }
             eprintln!(
-                "navigator: scope={scope:?}, panes={panes}, {:.1} us/frame",
+                "navigator: scope={scope:?}, workspaces={workspaces}, panes={panes}, {:.1} us/frame",
                 start.elapsed().as_secs_f64() * 1000.0
             );
         }

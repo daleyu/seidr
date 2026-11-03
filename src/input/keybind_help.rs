@@ -126,7 +126,10 @@ pub(crate) fn keybind_help_groups(
                     "workspace navigation",
                 ),
                 entry(binding_label(&keybinds.goto), "session navigator"),
-                entry(binding_label(&keybinds.goto_machine), "machine navigator"),
+                entry(
+                    binding_label(&keybinds.goto_machine),
+                    "workspace / machine navigator",
+                ),
                 entry(
                     binding_label(&keybinds.goto_agent),
                     "running agent navigator",

@@ -729,7 +729,7 @@ fn render_navigator_overlay(
         q.width.saturating_sub(4),
         match n.scope {
             ClientNavigatorScope::All => " Go to ",
-            ClientNavigatorScope::Machines => " Go to machine ",
+            ClientNavigatorScope::Machines => " Go to workspace / machine ",
             ClientNavigatorScope::Agents => " Go to agent ",
         },
         Style::default().fg(p.accent).bg(p.panel_bg),
@@ -750,7 +750,7 @@ fn render_navigator_overlay(
     } else if n.query.is_empty() {
         match n.scope {
             ClientNavigatorScope::All => " / search agents and terminals",
-            ClientNavigatorScope::Machines => " / search machines",
+            ClientNavigatorScope::Machines => " / search local workspaces and machines",
             ClientNavigatorScope::Agents => " / search running agents",
         }
         .to_owned()
@@ -760,15 +760,13 @@ fn render_navigator_overlay(
     let destination_count = rows
         .iter()
         .filter(|row| match n.scope {
-            ClientNavigatorScope::Machines => {
-                matches!(row.target, ClientNavigatorTarget::Machine { .. })
-            }
+            ClientNavigatorScope::Machines => true,
             _ => matches!(row.target, ClientNavigatorTarget::Pane { .. }),
         })
         .count();
     let (singular, plural) = match n.scope {
         ClientNavigatorScope::All => ("terminal", "terminals"),
-        ClientNavigatorScope::Machines => ("machine", "machines"),
+        ClientNavigatorScope::Machines => ("destination", "destinations"),
         ClientNavigatorScope::Agents => ("agent", "agents"),
     };
     let count = format!(
@@ -844,7 +842,7 @@ fn render_navigator_overlay(
             body.width,
             match n.scope {
                 ClientNavigatorScope::All => " No matching agents or terminals",
-                ClientNavigatorScope::Machines => " No matching machines",
+                ClientNavigatorScope::Machines => " No matching workspaces or machines",
                 ClientNavigatorScope::Agents => " No matching running agents",
             },
             Style::default().fg(p.overlay0).bg(p.panel_bg),
@@ -1053,7 +1051,7 @@ fn render_navigator_overlay(
         if n.search_focused {
             " type search · ctrl+g navigate · ↑↓/ctrl+n/p move · enter open · esc back"
         } else if n.scope == ClientNavigatorScope::Machines {
-            " ctrl+g or / search · ↑↓/j/k/←→ machines · enter open · esc close"
+            " ctrl+g or / search · ↑↓/j/k/←→ destinations · enter open · esc close"
         } else if n.scope == ClientNavigatorScope::Agents {
             " ctrl+g or / search · ↑↓/j/k agents · a/b/w/i/d filter · enter open · esc close"
         } else {

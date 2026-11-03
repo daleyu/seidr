@@ -357,7 +357,7 @@ pub struct KeysConfig {
     pub workspace_picker: BindingConfig,
     /// Open the session navigator. Default: "prefix+g"
     pub goto: BindingConfig,
-    /// Open the machine navigator. Default: "prefix+m"
+    /// Open the local workspace and remote machine navigator. Default: "prefix+m"
     pub goto_machine: BindingConfig,
     /// Search running agents on online machines. Default: "prefix+a"
     pub goto_agent: BindingConfig,

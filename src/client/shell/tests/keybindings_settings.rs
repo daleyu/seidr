@@ -21,7 +21,7 @@ fn scoped_navigators_are_visible_in_the_keybindings_panel() {
         .join("\n");
     for (binding, label) in [
         ("prefix+g", "session navigator"),
-        ("prefix+m", "machine navigator"),
+        ("prefix+m", "workspace / machine navigator"),
         ("prefix+a", "running agent navigator"),
     ] {
         assert!(

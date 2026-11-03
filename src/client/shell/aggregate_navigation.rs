@@ -319,10 +319,48 @@ pub(super) fn navigator_rows(
 ) -> Vec<ClientNavigatorRow> {
     let query = navigator.query.trim();
     if navigator.scope == ClientNavigatorScope::Machines {
-        // Machine navigation never walks workspace or pane snapshots.
-        let rows = endpoints
-            .iter()
-            .map(|endpoint| ClientNavigatorRow {
+        // Local workspaces are destinations alongside whole remote machines.
+        // This scope never walks tabs, panes, or agent snapshots.
+        let mut rows = Vec::new();
+        for endpoint in endpoints {
+            let stale = endpoint.status != ClientEndpointStatus::Online;
+            if endpoint.endpoint_id.is_local() {
+                if let Some(snapshot) = endpoint.snapshot.as_deref() {
+                    rows.extend(
+                        snapshot
+                            .workspaces
+                            .iter()
+                            .map(|workspace| ClientNavigatorRow {
+                                depth: 0,
+                                label: workspace.label.clone(),
+                                meta: "local".into(),
+                                detail: workspace.new_workspace_cwd.clone(),
+                                search_text: if query.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(
+                                        "local {} {} {}",
+                                        workspace.label,
+                                        workspace.branch.as_deref().unwrap_or_default(),
+                                        workspace.new_workspace_cwd
+                                    )
+                                },
+                                agent: None,
+                                status: None,
+                                stale,
+                                current: endpoint.endpoint_id == *active_endpoint_id
+                                    && snapshot.focused_workspace_id.as_deref()
+                                        == Some(&workspace.workspace_id),
+                                target: ClientNavigatorTarget::Workspace {
+                                    endpoint_id: endpoint.endpoint_id.clone(),
+                                    workspace_id: workspace.workspace_id.clone(),
+                                },
+                            }),
+                    );
+                }
+                continue;
+            }
+            rows.push(ClientNavigatorRow {
                 depth: 0,
                 label: endpoint.label.clone(),
                 meta: String::new(),
@@ -330,13 +368,13 @@ pub(super) fn navigator_rows(
                 search_text: endpoint.label.clone(),
                 agent: None,
                 status: None,
-                stale: endpoint.status != ClientEndpointStatus::Online,
+                stale,
                 current: endpoint.endpoint_id == *active_endpoint_id,
                 target: ClientNavigatorTarget::Machine {
                     endpoint_id: endpoint.endpoint_id.clone(),
                 },
-            })
-            .collect();
+            });
+        }
         return if query.is_empty() {
             rows
         } else {

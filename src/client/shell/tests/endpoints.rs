@@ -75,7 +75,7 @@ fn state_with_remote() -> (ClientShellState, ClientEndpointId) {
 }
 
 #[test]
-fn machine_navigator_selects_only_machines_and_opens_their_remembered_view() {
+fn machine_navigator_selects_local_workspaces_and_remote_machines() {
     let (mut state, remote_id) = state_with_remote();
     state.handle_input_bytes(b"\x02m");
     let Some(ClientShellOverlay::Navigator(navigator)) = &state.overlay else {
@@ -84,8 +84,9 @@ fn machine_navigator_selects_only_machines_and_opens_their_remembered_view() {
     assert_eq!(navigator.scope, ClientNavigatorScope::Machines);
     assert_eq!(
         navigator.selected,
-        Some(ClientNavigatorTarget::Machine {
+        Some(ClientNavigatorTarget::Workspace {
             endpoint_id: ClientEndpointId::Local,
+            workspace_id: "ws_1".into(),
         })
     );
     let rows =
@@ -93,14 +94,14 @@ fn machine_navigator_selects_only_machines_and_opens_their_remembered_view() {
     assert_eq!(rows.len(), 2);
     assert!(rows
         .iter()
-        .all(|row| row.depth == 0 && matches!(row.target, ClientNavigatorTarget::Machine { .. })));
+        .all(|row| row.depth == 0 && !matches!(row.target, ClientNavigatorTarget::Pane { .. })));
     let frame = state.compose(106, 30).expect("machine navigator frame");
     let text = frame
         .cells
         .iter()
         .map(|cell| cell.symbol.as_str())
         .collect::<String>();
-    assert!(text.contains("Go to machine") && text.contains("2 machines"));
+    assert!(text.contains("Go to workspace / machine") && text.contains("2 destinations"));
     assert_eq!(state.hits.navigator_rows.len(), 2);
 
     state.handle_input_bytes(b"\x07"); // Leave search mode.
@@ -135,7 +136,7 @@ fn machine_navigator_searches_saved_machines_without_snapshots_and_in_local_only
     let rows =
         render::client_navigator_rows(&state.endpoints, &state.active_endpoint_id, navigator);
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].label, "Local");
+    assert_eq!(rows[0].label, "client-shell");
 
     let profile = remote_profile();
     let remote_id = ClientEndpointId::Ssh(profile.id.clone());
@@ -161,8 +162,80 @@ fn machine_navigator_searches_saved_machines_without_snapshots_and_in_local_only
         .iter()
         .map(|cell| cell.symbol.as_str())
         .collect::<String>();
-    assert!(text.contains("No matching machines"));
+    assert!(text.contains("No matching workspaces or machines"));
     assert!(state.hits.navigator_rows.is_empty());
+}
+
+#[test]
+fn machine_navigator_lists_each_local_workspace_but_groups_remote_workspaces() {
+    let (mut state, remote_id) = state_with_remote();
+    let mut local = snapshot();
+    let mut second = local.workspaces[0].clone();
+    second.workspace_id = "ws_2".into();
+    second.label = "Build".into(); // Same label as the remote machine.
+    second.branch = Some("topic-branch".into());
+    second.new_workspace_cwd = "/repo/second".into();
+    second.focused = false;
+    local.workspaces.push(second); // Empty workspaces are still destinations.
+    state.set_snapshot(Box::new(local));
+    let mut remote = snapshot();
+    let mut remote_second = remote.workspaces[0].clone();
+    remote_second.workspace_id = "remote-second".into();
+    remote_second.label = "remote-internal-workspace".into();
+    remote.workspaces.push(remote_second);
+    state.set_endpoint_snapshot(&remote_id, Box::new(remote));
+    state.open_scoped_navigator_overlay(ClientNavigatorScope::Machines);
+
+    let local_target = ClientNavigatorTarget::Workspace {
+        endpoint_id: ClientEndpointId::Local,
+        workspace_id: "ws_2".into(),
+    };
+    for (query, expected) in [
+        ("", 3),
+        ("Build", 2),
+        ("local", 2),
+        ("topic-branch", 1),
+        ("/repo/second", 1),
+        ("remote-internal-workspace", 0),
+        ("pane_1", 0),
+    ] {
+        let Some(ClientShellOverlay::Navigator(navigator)) = state.overlay.as_mut() else {
+            panic!("workspace / machine navigator");
+        };
+        navigator.query = query.into();
+        navigator.selected = None;
+        let rows =
+            render::client_navigator_rows(&state.endpoints, &state.active_endpoint_id, navigator);
+        assert_eq!(rows.len(), expected, "query={query:?}");
+        assert!(rows.iter().all(|row| row.depth == 0
+            && match &row.target {
+                ClientNavigatorTarget::Workspace { endpoint_id, .. } => endpoint_id.is_local(),
+                ClientNavigatorTarget::Machine { endpoint_id } => !endpoint_id.is_local(),
+                ClientNavigatorTarget::Pane { .. } => false,
+            }));
+        if query == "/repo/second" || query == "topic-branch" {
+            assert_eq!(rows[0].target, local_target);
+        }
+    }
+    state.open_scoped_navigator_overlay(ClientNavigatorScope::Machines);
+    state.handle_input_bytes(b"/repo/second");
+    state.compose(106, 30).expect("local workspace destination");
+    let (rect, target) = state.hits.navigator_rows[0].clone();
+    assert_eq!(target, local_target);
+    let outcome =
+        state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: rect.x + 2,
+            row: rect.y,
+            modifiers: KeyModifiers::empty(),
+        })]);
+    assert!(
+        matches!(outcome.actions.as_slice(), [ClientShellAction::ActivateEndpoint {
+        endpoint_id: ClientEndpointId::Local,
+        target: Some(ClientEndpointFocusTarget::Workspace(workspace_id)),
+    }] if workspace_id == "ws_2")
+    );
+    assert!(state.overlay.is_none());
 }
 
 #[test]

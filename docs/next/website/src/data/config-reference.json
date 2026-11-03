@@ -551,7 +551,7 @@
           "key": "keys.goto_machine",
           "type": "keybinding",
           "default": "\"prefix+m\"",
-          "description": "Open the machine-only navigator."
+          "description": "Open the local workspace and remote machine navigator."
         },
         {
           "key": "keys.goto_agent",
