@@ -2,6 +2,37 @@ use super::*;
 use crate::input::TerminalKey;
 
 #[test]
+fn scoped_navigators_are_visible_in_the_keybindings_panel() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    state.handle_input_bytes(b"\x02?");
+    state.handle_input_bytes(b"/navigator");
+    let frame = state.compose(106, 30).expect("filtered keybindings panel");
+    let text = frame
+        .cells
+        .chunks(frame.width as usize)
+        .map(|row| {
+            row.iter()
+                .map(|cell| cell.symbol.as_str())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    for (binding, label) in [
+        ("prefix+g", "session navigator"),
+        ("prefix+m", "machine navigator"),
+        ("prefix+a", "running agent navigator"),
+    ] {
+        assert!(
+            text.lines()
+                .any(|line| line.contains(binding) && line.contains(label)),
+            "missing {binding}: {label}\n{text}"
+        );
+    }
+}
+
+#[test]
 fn plus_commands_survive_snapshots_and_reload_for_both_keybinding_sources() {
     for source in [
         ClientShellKeybindingSource::Local,

@@ -57,6 +57,19 @@ impl ClientShellState {
                     outcome.repaint = true;
                     return;
                 }
+                if let Some(scope) = match action {
+                    crate::input::KeybindAction::OpenMachineNavigator => {
+                        Some(ClientNavigatorScope::Machines)
+                    }
+                    crate::input::KeybindAction::OpenAgentNavigator => {
+                        Some(ClientNavigatorScope::Agents)
+                    }
+                    _ => None,
+                } {
+                    self.open_scoped_navigator_overlay(scope);
+                    outcome.repaint = true;
+                    return;
+                }
                 if action == crate::input::KeybindAction::Help {
                     self.overlay = Some(ClientShellOverlay::Help(ClientHelpOverlay {
                         query: TextEditor::default(),

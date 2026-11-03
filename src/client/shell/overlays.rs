@@ -727,7 +727,11 @@ fn render_navigator_overlay(
         q.x + 2,
         q.y,
         q.width.saturating_sub(4),
-        " Go to ",
+        match n.scope {
+            ClientNavigatorScope::All => " Go to ",
+            ClientNavigatorScope::Machines => " Go to machine ",
+            ClientNavigatorScope::Agents => " Go to agent ",
+        },
         Style::default().fg(p.accent).bg(p.panel_bg),
     );
     let rows = super::aggregate_navigation::navigator_rows(endpoints, active_endpoint_id, n);
@@ -744,20 +748,35 @@ fn render_navigator_overlay(
             }
         )
     } else if n.query.is_empty() {
-        " / search agents and terminals".to_owned()
+        match n.scope {
+            ClientNavigatorScope::All => " / search agents and terminals",
+            ClientNavigatorScope::Machines => " / search machines",
+            ClientNavigatorScope::Agents => " / search running agents",
+        }
+        .to_owned()
     } else {
         format!(" / {}", n.query)
     };
-    let terminal_count = rows
+    let destination_count = rows
         .iter()
-        .filter(|row| matches!(row.target, ClientNavigatorTarget::Pane { .. }))
+        .filter(|row| match n.scope {
+            ClientNavigatorScope::Machines => {
+                matches!(row.target, ClientNavigatorTarget::Machine { .. })
+            }
+            _ => matches!(row.target, ClientNavigatorTarget::Pane { .. }),
+        })
         .count();
+    let (singular, plural) = match n.scope {
+        ClientNavigatorScope::All => ("terminal", "terminals"),
+        ClientNavigatorScope::Machines => ("machine", "machines"),
+        ClientNavigatorScope::Agents => ("agent", "agents"),
+    };
     let count = format!(
-        "{terminal_count} {}",
-        if terminal_count == 1 {
-            "terminal"
+        "{destination_count} {}",
+        if destination_count == 1 {
+            singular
         } else {
-            "terminals"
+            plural
         }
     );
     put_text(
@@ -823,7 +842,11 @@ fn render_navigator_overlay(
             body.x,
             body.y,
             body.width,
-            " No matching agents or terminals",
+            match n.scope {
+                ClientNavigatorScope::All => " No matching agents or terminals",
+                ClientNavigatorScope::Machines => " No matching machines",
+                ClientNavigatorScope::Agents => " No matching running agents",
+            },
             Style::default().fg(p.overlay0).bg(p.panel_bg),
         );
     }
@@ -860,7 +883,8 @@ fn render_navigator_overlay(
                 )
                 .bg(p.panel_bg)
         };
-        let is_pane = matches!(r.target, ClientNavigatorTarget::Pane { .. });
+        let is_pane = n.scope == ClientNavigatorScope::All
+            && matches!(r.target, ClientNavigatorTarget::Pane { .. });
         let connector = if !is_pane {
             ""
         } else if rows
@@ -1028,6 +1052,10 @@ fn render_navigator_overlay(
         i.width,
         if n.search_focused {
             " type search · ctrl+g navigate · ↑↓/ctrl+n/p move · enter open · esc back"
+        } else if n.scope == ClientNavigatorScope::Machines {
+            " ctrl+g or / search · ↑↓/j/k/←→ machines · enter open · esc close"
+        } else if n.scope == ClientNavigatorScope::Agents {
+            " ctrl+g or / search · ↑↓/j/k agents · a/b/w/i/d filter · enter open · esc close"
         } else {
             " ctrl+g or / search · ↑↓/j/k rows · ←→ workspace · a/b/w/i/d filter · enter open · esc close"
         },

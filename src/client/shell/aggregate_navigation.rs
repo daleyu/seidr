@@ -318,6 +318,32 @@ pub(super) fn navigator_rows(
     navigator: &ClientNavigatorOverlay,
 ) -> Vec<ClientNavigatorRow> {
     let query = navigator.query.trim();
+    if navigator.scope == ClientNavigatorScope::Machines {
+        // Machine navigation never walks workspace or pane snapshots.
+        let rows = endpoints
+            .iter()
+            .map(|endpoint| ClientNavigatorRow {
+                depth: 0,
+                label: endpoint.label.clone(),
+                meta: String::new(),
+                detail: String::new(),
+                search_text: endpoint.label.clone(),
+                agent: None,
+                status: None,
+                stale: endpoint.status != ClientEndpointStatus::Online,
+                current: endpoint.endpoint_id == *active_endpoint_id,
+                target: ClientNavigatorTarget::Machine {
+                    endpoint_id: endpoint.endpoint_id.clone(),
+                },
+            })
+            .collect();
+        return if query.is_empty() {
+            rows
+        } else {
+            rank_navigator_rows(rows, query)
+        };
+    }
+    let agents_only = navigator.scope == ClientNavigatorScope::Agents;
     let filter = |status| match navigator.filter {
         Some(ClientNavigatorFilter::Blocked) => status == crate::api::schema::AgentStatus::Blocked,
         Some(ClientNavigatorFilter::Working) => status == crate::api::schema::AgentStatus::Working,
@@ -332,6 +358,9 @@ pub(super) fn navigator_rows(
 
     for endpoint in endpoints {
         let stale = endpoint.status != ClientEndpointStatus::Online;
+        if agents_only && stale {
+            continue;
+        }
         let endpoint_query_matches = !query.is_empty();
         let mut endpoint_rows = Vec::new();
         if let Some(snapshot) = endpoint.snapshot.as_deref() {
@@ -371,6 +400,11 @@ pub(super) fn navigator_rows(
                         .unwrap_or_default();
                     for (index, pane) in tab_panes.iter().enumerate() {
                         let agent = agents.get(pane.pane_id.as_str()).copied();
+                        // Names and display labels can survive an agent's exit.
+                        // The runtime's agent identity signals a running process.
+                        if agents_only && !agent.is_some_and(|agent| agent.agent.is_some()) {
+                            continue;
+                        }
                         let status = agent
                             .map_or(crate::api::schema::AgentStatus::Unknown, |agent| {
                                 agent.agent_status
@@ -435,13 +469,20 @@ pub(super) fn navigator_rows(
                         };
                         if filter(status) {
                             children.push(ClientNavigatorRow {
-                                depth: 1 + depth_offset,
+                                depth: if agents_only { 0 } else { 1 + depth_offset },
                                 label,
                                 meta: meta.to_owned(),
-                                detail: format!(
-                                    "{} / {} / {}",
-                                    workspace.label, tab.label, pane.pane_id
-                                ),
+                                detail: if agents_only {
+                                    format!(
+                                        "{} / {} / {} / {}",
+                                        endpoint.label, workspace.label, tab.label, pane.pane_id
+                                    )
+                                } else {
+                                    format!(
+                                        "{} / {} / {}",
+                                        workspace.label, tab.label, pane.pane_id
+                                    )
+                                },
                                 search_text,
                                 agent: agent_kind.map(str::to_owned),
                                 status: Some(status),
@@ -456,7 +497,9 @@ pub(super) fn navigator_rows(
                         }
                     }
                 }
-                if !filtering || !children.is_empty() || !query.is_empty() {
+                if agents_only {
+                    endpoint_rows.extend(children);
+                } else if !filtering || !children.is_empty() || !query.is_empty() {
                     endpoint_rows.push(ClientNavigatorRow {
                         depth: depth_offset,
                         label: workspace.label.clone(),
@@ -490,7 +533,7 @@ pub(super) fn navigator_rows(
             }
         }
         if !filtering || endpoint_query_matches || !endpoint_rows.is_empty() {
-            if federated {
+            if federated && !agents_only {
                 rows.push(ClientNavigatorRow {
                     depth: 0,
                     label: endpoint.label.to_owned(),

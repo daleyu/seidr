@@ -133,6 +133,8 @@ A small keybinding override looks like this:
 [keys]
 prefix = "ctrl+b"
 goto = "prefix+g"
+goto_machine = "prefix+m"
+goto_agent = "prefix+a"
 new_tab = "prefix+c"
 next_tab = "prefix+n"
 previous_tab = "prefix+p"
@@ -141,6 +143,8 @@ navigate_workspace_down = "j"
 navigate_pane_down = "ctrl+j"
 split_horizontal = "prefix+minus"
 ```
+
+`goto` keeps the general session navigator. `goto_machine` opens a machine-only list, including saved machines that have not connected yet; selecting a machine opens its remembered workspace and pane. `goto_agent` lists only running agents on online machines, including idle, working, blocked, and done agents. Both use the same fuzzy search and Enter-to-open controls. Press `ctrl+g` to switch between search and navigation. In machine navigation, arrow keys and `j`/`k` move between machines. Agent navigation also supports the existing status filters (`a` all, `b` blocked, `w` working, `i` idle, `d` done).
 
 `keys.prefix` also accepts an array when you need to enter prefix mode from more than one key, for example to share one config between macOS and a remote Linux machine:
 

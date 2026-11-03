@@ -362,8 +362,16 @@ pub(super) struct ClientNavigatorRow {
     pub(super) target: ClientNavigatorTarget,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ClientNavigatorScope {
+    All,
+    Machines,
+    Agents,
+}
+
 #[derive(Debug)]
 pub(super) struct ClientNavigatorOverlay {
+    pub(super) scope: ClientNavigatorScope,
     pub(super) query: TextEditor,
     pub(super) search_focused: bool,
     pub(super) selected: Option<ClientNavigatorTarget>,

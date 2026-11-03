@@ -72,6 +72,8 @@ pub(crate) enum KeybindAction {
     OpenNotificationTarget,
     Detach,
     OpenNavigator,
+    OpenMachineNavigator,
+    OpenAgentNavigator,
 }
 
 pub(crate) fn resolve_direct_binding(
@@ -161,6 +163,8 @@ pub(crate) fn resolve_non_indexed_action(
         ),
         (&keybinds.detach, KeybindAction::Detach),
         (&keybinds.goto, KeybindAction::OpenNavigator),
+        (&keybinds.goto_machine, KeybindAction::OpenMachineNavigator),
+        (&keybinds.goto_agent, KeybindAction::OpenAgentNavigator),
     ] {
         if action_matches(bindings, key, dispatch) {
             return Some(action);
@@ -266,6 +270,46 @@ mod tests {
     use crossterm::event::{KeyCode, KeyModifiers};
 
     use super::*;
+
+    #[test]
+    fn scoped_navigator_bindings_have_defaults_and_support_direct_overrides() {
+        let defaults = crate::config::Config::default().keybinds();
+        for (character, action) in [
+            ('g', KeybindAction::OpenNavigator),
+            ('m', KeybindAction::OpenMachineNavigator),
+            ('a', KeybindAction::OpenAgentNavigator),
+        ] {
+            assert!(matches!(
+                resolve_prefix_binding(&defaults, &TerminalKey::new(KeyCode::Char(character), KeyModifiers::empty())),
+                Some(KeybindMatch::Action(found)) if found == action
+            ));
+        }
+        let config: crate::config::Config =
+            toml::from_str("[keys]\ngoto_machine = \"ctrl+alt+m\"\ngoto_agent = []").unwrap();
+        assert!(config.collect_diagnostics().is_empty());
+        let keybinds = config.keybinds();
+        assert!(matches!(
+            resolve_direct_binding(
+                &keybinds,
+                &TerminalKey::new(
+                    KeyCode::Char('m'),
+                    KeyModifiers::CONTROL | KeyModifiers::ALT
+                )
+            ),
+            Some(KeybindMatch::Action(KeybindAction::OpenMachineNavigator))
+        ));
+        assert!(resolve_prefix_binding(
+            &keybinds,
+            &TerminalKey::new(KeyCode::Char('m'), KeyModifiers::empty())
+        )
+        .is_none());
+        assert!(keybinds.goto_agent.bindings.is_empty());
+        let profile = config.keys.local_profile(&keybinds);
+        let encoded = toml::to_string(&profile).unwrap();
+        let restored: crate::config::KeysConfig = toml::from_str(&encoded).unwrap();
+        assert_eq!(restored.goto_machine, config.keys.goto_machine);
+        assert_eq!(restored.goto_agent, config.keys.goto_agent);
+    }
 
     #[test]
     fn clear_pane_is_unbound_by_default_and_configurable() {

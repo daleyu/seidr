@@ -191,7 +191,12 @@ impl ClientShellState {
     }
 
     pub(super) fn open_navigator_overlay(&mut self) {
+        self.open_scoped_navigator_overlay(ClientNavigatorScope::All);
+    }
+
+    pub(super) fn open_scoped_navigator_overlay(&mut self, scope: ClientNavigatorScope) {
         let mut navigator = ClientNavigatorOverlay {
+            scope,
             query: TextEditor::default(),
             search_focused: true,
             selected: None,
@@ -240,6 +245,12 @@ impl ClientShellState {
     }
 
     fn move_navigator_workspace(&mut self, forward: bool) {
+        if matches!(self.overlay.as_ref(), Some(ClientShellOverlay::Navigator(navigator))
+            if navigator.scope == ClientNavigatorScope::Machines)
+        {
+            self.move_navigator_selection(if forward { 1 } else { -1 });
+            return;
+        }
         let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut() else {
             return;
         };
@@ -767,6 +778,12 @@ impl ClientShellState {
             if code == KeyCode::Char('u') && modifiers.contains(KeyModifiers::CONTROL) {
                 self.move_navigator_selection(-8);
                 outcome.repaint = true;
+                return;
+            }
+            if matches!(self.overlay.as_ref(), Some(ClientShellOverlay::Navigator(navigator))
+                if navigator.scope == ClientNavigatorScope::Machines)
+            {
+                // Agent status shortcuts have no meaning in the machine list.
                 return;
             }
             if let Some(filter) = match code {

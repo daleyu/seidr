@@ -75,6 +75,169 @@ fn state_with_remote() -> (ClientShellState, ClientEndpointId) {
 }
 
 #[test]
+fn machine_navigator_selects_only_machines_and_opens_their_remembered_view() {
+    let (mut state, remote_id) = state_with_remote();
+    state.handle_input_bytes(b"\x02m");
+    let Some(ClientShellOverlay::Navigator(navigator)) = &state.overlay else {
+        panic!("machine navigator");
+    };
+    assert_eq!(navigator.scope, ClientNavigatorScope::Machines);
+    assert_eq!(
+        navigator.selected,
+        Some(ClientNavigatorTarget::Machine {
+            endpoint_id: ClientEndpointId::Local,
+        })
+    );
+    let rows =
+        render::client_navigator_rows(&state.endpoints, &state.active_endpoint_id, navigator);
+    assert_eq!(rows.len(), 2);
+    assert!(rows
+        .iter()
+        .all(|row| row.depth == 0 && matches!(row.target, ClientNavigatorTarget::Machine { .. })));
+    let frame = state.compose(106, 30).expect("machine navigator frame");
+    let text = frame
+        .cells
+        .iter()
+        .map(|cell| cell.symbol.as_str())
+        .collect::<String>();
+    assert!(text.contains("Go to machine") && text.contains("2 machines"));
+    assert_eq!(state.hits.navigator_rows.len(), 2);
+
+    state.handle_input_bytes(b"\x07"); // Leave search mode.
+    state.handle_input_bytes(b"w"); // Agent status shortcuts must not filter machines.
+    state.handle_input_bytes(b"\x1b[C"); // Right moves to the next machine.
+    let Some(ClientShellOverlay::Navigator(navigator)) = &state.overlay else {
+        panic!("machine navigator");
+    };
+    assert!(navigator.filter.is_none());
+    assert_eq!(
+        navigator.selected,
+        Some(ClientNavigatorTarget::Machine {
+            endpoint_id: remote_id.clone(),
+        })
+    );
+    let outcome = state.handle_input_bytes(b"\r");
+    assert!(
+        matches!(outcome.actions.as_slice(), [ClientShellAction::ActivateEndpoint { endpoint_id, target: None }] if endpoint_id == &remote_id)
+    );
+    assert!(state.overlay.is_none());
+}
+
+#[test]
+fn machine_navigator_searches_saved_machines_without_snapshots_and_in_local_only_mode() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    state.open_scoped_navigator_overlay(ClientNavigatorScope::Machines);
+    let Some(ClientShellOverlay::Navigator(navigator)) = &state.overlay else {
+        panic!("machine navigator");
+    };
+    let rows =
+        render::client_navigator_rows(&state.endpoints, &state.active_endpoint_id, navigator);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].label, "Local");
+
+    let profile = remote_profile();
+    let remote_id = ClientEndpointId::Ssh(profile.id.clone());
+    state.set_endpoint_catalog(&[profile]);
+    state.handle_input_bytes(b"bld"); // Fuzzy machine-name search.
+    let Some(ClientShellOverlay::Navigator(navigator)) = &state.overlay else {
+        panic!("machine navigator");
+    };
+    let rows =
+        render::client_navigator_rows(&state.endpoints, &state.active_endpoint_id, navigator);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].target,
+        ClientNavigatorTarget::Machine {
+            endpoint_id: remote_id
+        }
+    );
+    assert!(rows[0].stale);
+    state.handle_input_bytes(b"no-such-machine");
+    let frame = state.compose(106, 30).expect("empty machine navigator");
+    let text = frame
+        .cells
+        .iter()
+        .map(|cell| cell.symbol.as_str())
+        .collect::<String>();
+    assert!(text.contains("No matching machines"));
+    assert!(state.hits.navigator_rows.is_empty());
+}
+
+#[test]
+fn agent_navigator_excludes_shells_exited_agents_and_offline_machines() {
+    let (mut state, remote_id) = state_with_remote();
+    let mut local = snapshot();
+    let mut exited = agent("exited", AgentStatus::Done, 1);
+    exited.pane_id = "pane_exited".into();
+    exited.agent = None;
+    exited.display_agent = Some("pi".into());
+    let mut exited_pane = local.panes[0].clone();
+    exited_pane.pane_id = exited.pane_id.clone();
+    let mut shell = local.panes[0].clone();
+    shell.pane_id = "pane_shell".into();
+    local.panes.extend([exited_pane, shell]);
+    local.agents = vec![agent("local idle", AgentStatus::Idle, 1), exited];
+    state.set_snapshot(Box::new(local));
+    let mut remote = snapshot();
+    remote.workspaces[0].label = "remote-workspace".into();
+    remote.agents = vec![agent("remote blocked", AgentStatus::Blocked, 1)];
+    state.set_endpoint_snapshot(&remote_id, Box::new(remote));
+    state.handle_input_bytes(b"\x02a");
+
+    for (query, filter, expected) in [
+        ("", None, 2),
+        ("build remote-workspace", None, 1),
+        ("", Some(ClientNavigatorFilter::Blocked), 1),
+        ("", Some(ClientNavigatorFilter::Working), 0),
+        ("pane_shell", None, 0),
+        ("exited", None, 0),
+    ] {
+        let Some(ClientShellOverlay::Navigator(navigator)) = state.overlay.as_mut() else {
+            panic!("agent navigator");
+        };
+        assert_eq!(navigator.scope, ClientNavigatorScope::Agents);
+        navigator.query = query.into();
+        navigator.filter = filter;
+        navigator.selected = None;
+        let rows =
+            render::client_navigator_rows(&state.endpoints, &state.active_endpoint_id, navigator);
+        assert_eq!(rows.len(), expected, "query={query:?} filter={filter:?}");
+        assert!(rows.iter().all(|row| row.depth == 0
+            && row.agent.is_some()
+            && !row.stale
+            && matches!(row.target, ClientNavigatorTarget::Pane { .. })));
+    }
+
+    state.open_scoped_navigator_overlay(ClientNavigatorScope::Agents);
+    let frame = state.compose(106, 30).expect("agent navigator frame");
+    let text = frame
+        .cells
+        .iter()
+        .map(|cell| cell.symbol.as_str())
+        .collect::<String>();
+    assert!(text.contains("Go to agent") && text.contains("2 agents"));
+    let outcome = state.handle_input_bytes(b"\x07bj\r"); // Blocked filter, then open the remote agent.
+    assert!(
+        matches!(outcome.actions.as_slice(), [ClientShellAction::ActivateEndpoint { endpoint_id, target: Some(ClientEndpointFocusTarget::Pane(pane_id)) }] if endpoint_id == &remote_id && pane_id == "pane_1")
+    );
+    assert!(state.overlay.is_none());
+    // Reopen against the same active projection, then remove the remote machine.
+    state.open_scoped_navigator_overlay(ClientNavigatorScope::Agents);
+    state.set_endpoint_status(&remote_id, ClientEndpointStatus::Reconnecting);
+    let Some(ClientShellOverlay::Navigator(navigator)) = &state.overlay else {
+        panic!("agent navigator");
+    };
+    let rows =
+        render::client_navigator_rows(&state.endpoints, &state.active_endpoint_id, navigator);
+    assert_eq!(rows.len(), 1);
+    assert!(
+        matches!(&rows[0].target, ClientNavigatorTarget::Pane { endpoint_id: ClientEndpointId::Local, pane_id } if pane_id == "pane_1")
+    );
+}
+
+#[test]
 fn workspace_navigation_waits_for_the_target_presentation_fence() {
     use crate::client::endpoint::{EndpointNegotiation, EndpointRegistry};
     use crate::client::endpoint_commands::EndpointCommands;

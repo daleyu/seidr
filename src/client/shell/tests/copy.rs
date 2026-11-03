@@ -1830,6 +1830,58 @@ fn navigator_render_scale_profile() {
 }
 
 #[test]
+#[ignore = "manual scoped navigator composition scaling profile"]
+fn scoped_navigator_render_scale_profile() {
+    for panes in [1, 15] {
+        for scope in [
+            ClientNavigatorScope::All,
+            ClientNavigatorScope::Machines,
+            ClientNavigatorScope::Agents,
+        ] {
+            let mut snapshot = navigator_scale_snapshot(1, 1, panes);
+            snapshot.agents = snapshot
+                .panes
+                .iter()
+                .map(|pane| ClientShellAgent {
+                    pane_id: pane.pane_id.clone(),
+                    workspace_id: pane.workspace_id.clone(),
+                    tab_id: pane.tab_id.clone(),
+                    name: pane.label.clone(),
+                    display_agent: None,
+                    agent: Some("pi".into()),
+                    title: None,
+                    terminal_title: None,
+                    terminal_title_stripped: None,
+                    agent_status: AgentStatus::Idle,
+                    state_change_seq: 1,
+                    state_labels: Vec::new(),
+                    tokens: Vec::new(),
+                    focused: pane.focused,
+                })
+                .collect();
+            let mut state =
+                ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+            state.set_snapshot(Box::new(snapshot));
+            let mut pane_surface = surface();
+            pane_surface.panes[0].pane_id = "pane_0_0_0".into();
+            state.set_pane_surface(pane_surface);
+            state.open_scoped_navigator_overlay(scope);
+            for _ in 0..20 {
+                std::hint::black_box(state.compose(106, 30).expect("navigator frame"));
+            }
+            let start = std::time::Instant::now();
+            for _ in 0..1000 {
+                std::hint::black_box(state.compose(106, 30).expect("navigator frame"));
+            }
+            eprintln!(
+                "navigator: scope={scope:?}, panes={panes}, {:.1} us/frame",
+                start.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+    }
+}
+
+#[test]
 fn navigator_owns_search_mouse_selection_and_stable_target_focus() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));
