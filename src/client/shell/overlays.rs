@@ -709,7 +709,11 @@ fn render_navigator_overlay(
     p: &Palette,
 ) -> Option<OverlayRender> {
     let a = b.area;
-    let width = a.width.saturating_sub(4).min(116);
+    let agents_scope = n.scope == ClientNavigatorScope::Agents;
+    let width = a
+        .width
+        .saturating_sub(4)
+        .min(if agents_scope { 180 } else { 116 });
     let height = a.height.saturating_sub(2).min(42);
     if width < 4 || height < 9 {
         return None;
@@ -721,7 +725,23 @@ fn render_navigator_overlay(
         height,
     )
     .intersection(a);
-    let i = panel(b, q, p.accent, p.panel_bg)?;
+    let full = panel(b, q, p.accent, p.panel_bg)?;
+    // The agent list keeps most of the width; the preview takes the rest when
+    // there is room for both to stay legible.
+    let (i, preview_area) = if agents_scope && full.width >= 110 {
+        let list_width = full.width * 55 / 100;
+        (
+            Rect::new(full.x, full.y, list_width, full.height),
+            Some(Rect::new(
+                full.x + list_width + 1,
+                full.y,
+                full.width - list_width - 1,
+                full.height.saturating_sub(1),
+            )),
+        )
+    } else {
+        (full, None)
+    };
     put_text(
         b,
         q.x + 2,
@@ -833,6 +853,17 @@ fn render_navigator_overlay(
     let scrollbar =
         (max > 0 && body.width > 1).then_some(Rect::new(body.right() - 1, body.y, 1, body.height));
     let row_width = body.width.saturating_sub(u16::from(scrollbar.is_some()));
+    let location_width = if agents_scope && row_width >= 60 {
+        rows.iter()
+            .map(|row| display_width(&row.location))
+            .max()
+            .filter(|width| *width > 0)
+            .map_or(0, |width| {
+                width.saturating_add(2).min(28).min(row_width / 3)
+            })
+    } else {
+        0
+    };
     let mut row_hits = Vec::new();
     if rows.is_empty() {
         put_text(
@@ -917,11 +948,16 @@ fn render_navigator_overlay(
         } else {
             0
         };
+        let location_columns = if r.status.is_some() && !r.location.is_empty() {
+            location_width
+        } else {
+            0
+        };
         put_text(
             b,
             rect.x,
             rect.y,
-            rect.width.saturating_sub(columns),
+            rect.width.saturating_sub(columns + location_columns),
             &label,
             st,
         );
@@ -959,6 +995,21 @@ fn render_navigator_overlay(
             } else {
                 st.fg(p.overlay0)
             };
+            if location_columns > 1 {
+                let location_text_width = location_columns - 2;
+                put_text(
+                    b,
+                    rect.right() - columns - location_columns + 1,
+                    rect.y,
+                    location_text_width,
+                    &crate::ui::truncate_end(&r.location, usize::from(location_text_width)),
+                    if r.stale || ix == selected {
+                        st
+                    } else {
+                        st.fg(p.subtext0)
+                    },
+                );
+            }
             if columns > 0 {
                 put_text(
                     b,
@@ -1043,11 +1094,14 @@ fn render_navigator_overlay(
             Style::default().fg(p.overlay0).bg(p.panel_bg),
         );
     }
+    if let Some(area) = preview_area {
+        render_navigator_preview(b, area, rows.get(selected), n, active_endpoint_id, p);
+    }
     put_text(
         b,
-        i.x,
-        i.bottom() - 1,
-        i.width,
+        full.x,
+        full.bottom() - 1,
+        full.width,
         if n.search_focused {
             " type search · ctrl+g navigate · ↑↓/ctrl+n/p move · enter open · esc back"
         } else if n.scope == ClientNavigatorScope::Machines {
@@ -1074,6 +1128,133 @@ fn render_navigator_overlay(
         cursor,
         ..OverlayRender::default()
     })
+}
+
+fn render_navigator_preview(
+    b: &mut Buffer,
+    area: Rect,
+    row: Option<&ClientNavigatorRow>,
+    n: &ClientNavigatorOverlay,
+    active_endpoint_id: &ClientEndpointId,
+    p: &Palette,
+) {
+    if area.width < 4 || area.height < 4 {
+        return;
+    }
+    let divider = Style::default().fg(p.surface1).bg(p.panel_bg);
+    for y in area.y..area.bottom() {
+        put_text(b, area.x - 1, y, 1, "│", divider);
+    }
+    let x = area.x + 1;
+    let width = area.width.saturating_sub(2);
+    let Some(row) = row else {
+        put_text(
+            b,
+            x,
+            area.y,
+            width,
+            "No agent selected",
+            Style::default().fg(p.overlay0).bg(p.panel_bg),
+        );
+        return;
+    };
+    put_text(
+        b,
+        x,
+        area.y,
+        width,
+        &row.label,
+        Style::default()
+            .fg(p.text)
+            .bg(p.panel_bg)
+            .add_modifier(Modifier::BOLD),
+    );
+    let mut summary_x = x;
+    let right = x + width;
+    if let Some(status) = row.status {
+        let status_style = Style::default().fg(status_color(status, p)).bg(p.panel_bg);
+        summary_x = put_segment(
+            b,
+            summary_x,
+            area.y + 1,
+            right,
+            &format!("{} {}", status_dot(status), status_text(status)),
+            status_style,
+        );
+    }
+    if let Some(agent) = row.agent.as_deref() {
+        summary_x = put_segment(
+            b,
+            summary_x,
+            area.y + 1,
+            right,
+            &format!("  {agent}"),
+            Style::default().fg(p.subtext0).bg(p.panel_bg),
+        );
+    }
+    if !row.location.is_empty() {
+        put_segment(
+            b,
+            summary_x,
+            area.y + 1,
+            right,
+            &format!("  {}", row.location),
+            Style::default().fg(p.overlay1).bg(p.panel_bg),
+        );
+    }
+    put_text(
+        b,
+        area.x,
+        area.y + 2,
+        area.width,
+        &"─".repeat(area.width as usize),
+        divider,
+    );
+    let body = Rect::new(x, area.y + 3, width, area.height.saturating_sub(3));
+    let muted = Style::default().fg(p.overlay0).bg(p.panel_bg);
+    let pane_id = match &row.target {
+        ClientNavigatorTarget::Pane {
+            endpoint_id,
+            pane_id,
+        } if endpoint_id == active_endpoint_id => pane_id,
+        ClientNavigatorTarget::Pane { .. } => {
+            put_text(
+                b,
+                body.x,
+                body.y,
+                body.width,
+                "Live preview is available for agents on the machine you are viewing.",
+                muted,
+            );
+            return;
+        }
+        _ => return,
+    };
+    let preview = &n.preview;
+    let text = preview
+        .text
+        .as_deref()
+        .filter(|_| preview.pane_id.as_deref() == Some(pane_id.as_str()));
+    let Some(text) = text else {
+        let message = if preview.disabled {
+            "This server does not support previews. Update and restart it to enable them."
+        } else if preview.unavailable && preview.pane_id.as_deref() == Some(pane_id.as_str()) {
+            "Preview unavailable"
+        } else {
+            "Loading preview…"
+        };
+        put_text(b, body.x, body.y, body.width, message, muted);
+        return;
+    };
+    let lines = super::navigator_preview::navigator_preview_lines(text, usize::from(body.height));
+    if lines.is_empty() {
+        put_text(b, body.x, body.y, body.width, "No output yet", muted);
+        return;
+    }
+    let style = Style::default().fg(p.text).bg(p.panel_bg);
+    for (offset, line) in lines.iter().enumerate() {
+        put_text(b, body.x, body.y + offset as u16, body.width, line, style);
+    }
 }
 
 fn help_lines(

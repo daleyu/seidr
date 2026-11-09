@@ -202,6 +202,7 @@ impl ClientShellState {
             selected: None,
             scroll: 0,
             filter: None,
+            preview: ClientNavigatorPreview::default(),
         };
         let rows =
             render::client_navigator_rows(&self.endpoints, &self.active_endpoint_id, &navigator);

@@ -354,6 +354,8 @@ pub(super) struct ClientNavigatorRow {
     pub(super) label: String,
     pub(super) meta: String,
     pub(super) detail: String,
+    /// Where an agent row runs, as `workspace · machine`; empty for other rows.
+    pub(super) location: String,
     pub(super) search_text: String,
     pub(super) agent: Option<String>,
     pub(super) status: Option<crate::api::schema::AgentStatus>,
@@ -377,6 +379,19 @@ pub(super) struct ClientNavigatorOverlay {
     pub(super) selected: Option<ClientNavigatorTarget>,
     pub(super) scroll: usize,
     pub(super) filter: Option<ClientNavigatorFilter>,
+    pub(super) preview: ClientNavigatorPreview,
+}
+
+/// Recent screen text for the selected agent, read through the active endpoint.
+#[derive(Debug, Default)]
+pub(super) struct ClientNavigatorPreview {
+    pub(super) pane_id: Option<String>,
+    pub(super) text: Option<String>,
+    pub(super) unavailable: bool,
+    /// The endpoint does not admit `pane.read`; stop asking for this session.
+    pub(super) disabled: bool,
+    pub(super) request_id: Option<String>,
+    pub(super) fetched_at: Option<std::time::Instant>,
 }
 
 #[derive(Debug)]
@@ -665,6 +680,7 @@ pub(super) enum PendingEndpointKind {
     PaneLinkResolve {
         target: super::link_hover::LinkHoverTarget,
     },
+    NavigatorPreview,
     PaneLinkActivate {
         pane_id: String,
         inner_rect: Rect,

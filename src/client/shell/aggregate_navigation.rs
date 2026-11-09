@@ -335,6 +335,7 @@ pub(super) fn navigator_rows(
                                 label: workspace.label.clone(),
                                 meta: "local".into(),
                                 detail: workspace.new_workspace_cwd.clone(),
+                                location: String::new(),
                                 search_text: if query.is_empty() {
                                     String::new()
                                 } else {
@@ -365,6 +366,7 @@ pub(super) fn navigator_rows(
                 label: endpoint.label.clone(),
                 meta: String::new(),
                 detail: String::new(),
+                location: String::new(),
                 search_text: endpoint.label.clone(),
                 agent: None,
                 status: None,
@@ -488,7 +490,7 @@ pub(super) fn navigator_rows(
                             String::new()
                         } else {
                             [
-                                federated.then_some(endpoint.label.as_str()),
+                                (federated || agents_only).then_some(endpoint.label.as_str()),
                                 Some(workspace.label.as_str()),
                                 Some(tab.label.as_str()),
                                 Some(label.as_str()),
@@ -521,6 +523,20 @@ pub(super) fn navigator_rows(
                                         workspace.label, tab.label, pane.pane_id
                                     )
                                 },
+                                // Mirrors the workspace / machine navigator's naming.
+                                location: if agents_only {
+                                    format!(
+                                        "{} · {}",
+                                        workspace.label,
+                                        if endpoint.endpoint_id.is_local() {
+                                            "local"
+                                        } else {
+                                            endpoint.label.as_str()
+                                        }
+                                    )
+                                } else {
+                                    String::new()
+                                },
                                 search_text,
                                 agent: agent_kind.map(str::to_owned),
                                 status: Some(status),
@@ -543,6 +559,7 @@ pub(super) fn navigator_rows(
                         label: workspace.label.clone(),
                         meta: workspace.branch.clone().unwrap_or_default(),
                         detail: workspace.new_workspace_cwd.clone(),
+                        location: String::new(),
                         search_text: if query.is_empty() {
                             String::new()
                         } else {
@@ -577,6 +594,7 @@ pub(super) fn navigator_rows(
                     label: endpoint.label.to_owned(),
                     meta: String::new(),
                     detail: String::new(),
+                    location: String::new(),
                     search_text: endpoint.label.to_owned(),
                     agent: None,
                     status: None,

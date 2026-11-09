@@ -3310,3 +3310,106 @@ fn toggle_agent_panel_hides_all_machines_without_changing_runtime_state() {
         assert_eq!(state.hits.endpoint_agents.len(), 2);
     }
 }
+
+#[test]
+fn agent_navigator_previews_the_selected_local_agent_without_notices() {
+    let (mut state, remote_id) = state_with_remote();
+    let mut local = snapshot();
+    local.workspaces[0].label = "seidr".into();
+    local.agents = vec![agent("local working", AgentStatus::Working, 1)];
+    state.set_snapshot(Box::new(local));
+    let mut remote = snapshot();
+    remote.boot_id = "remote-boot".into();
+    remote.workspaces[0].label = "remote-workspace".into();
+    let mut remote_agent = agent("remote blocked", AgentStatus::Blocked, 1);
+    remote_agent.pane_id = "pane_remote".into();
+    remote.agents = vec![remote_agent];
+    remote.panes[0].pane_id = "pane_remote".into();
+    state.set_endpoint_snapshot(&remote_id, Box::new(remote));
+    state.open_scoped_navigator_overlay(ClientNavigatorScope::Agents);
+    if let Some(ClientShellOverlay::Navigator(navigator)) = state.overlay.as_mut() {
+        navigator.selected = Some(ClientNavigatorTarget::Pane {
+            endpoint_id: ClientEndpointId::Local,
+            pane_id: "pane_1".into(),
+        });
+    }
+    let frame_text = |state: &mut ClientShellState| {
+        let frame = state.compose(160, 34).expect("agent navigator frame");
+        frame
+            .cells
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>()
+    };
+
+    let now = std::time::Instant::now();
+    let outcome = state.tick_navigator_preview(now);
+    let request_id = match outcome.actions.as_slice() {
+        [ClientShellAction::Endpoint {
+            endpoint_id: ClientEndpointId::Local,
+            request,
+            ..
+        }] => match &request.method {
+            crate::api::schema::Method::PaneRead(params) => {
+                assert_eq!(params.pane_id, "pane_1");
+                assert_eq!(params.source, crate::api::schema::ReadSource::Visible);
+                request.id.clone()
+            }
+            method => panic!("unexpected preview method {method:?}"),
+        },
+        actions => panic!("expected one preview read, got {actions:?}"),
+    };
+    // One read at a time: the next tick waits for the response.
+    assert!(state.tick_navigator_preview(now).actions.is_empty());
+    assert!(frame_text(&mut state).contains("Loading preview"));
+
+    let read = |text: &str| crate::api::schema::ResponseResult::PaneRead {
+        read: crate::api::schema::PaneReadResult {
+            pane_id: "pane_1".into(),
+            workspace_id: "ws_1".into(),
+            tab_id: "tab_1".into(),
+            source: crate::api::schema::ReadSource::Visible,
+            format: crate::api::schema::ReadFormat::Text,
+            text: text.into(),
+            revision: 0,
+            truncated: false,
+        },
+    };
+    let (repaint, actions) =
+        state.handle_endpoint_result("boot-1", &request_id, Ok(read("editing src/main.rs\n\n")));
+    assert!(repaint && actions.is_empty());
+    let text = frame_text(&mut state);
+    assert!(text.contains("editing src/main.rs"), "{text}");
+    assert!(text.contains("seidr · local") && text.contains("remote-workspace · Build"));
+
+    // Refreshes are throttled while the preview is current.
+    assert!(state.tick_navigator_preview(now).actions.is_empty());
+    let refresh = state.tick_navigator_preview(now + std::time::Duration::from_secs(2));
+    let [ClientShellAction::Endpoint { request, .. }] = refresh.actions.as_slice() else {
+        panic!("expected a refresh read");
+    };
+    let (_, actions) = state.handle_endpoint_result(
+        "boot-1",
+        &request.id,
+        Err(ClientShellEndpointError {
+            code: Some("pane_not_found".into()),
+            message: "gone".into(),
+        }),
+    );
+    assert!(actions.is_empty());
+    assert!(state.visible_endpoint_notice.is_none());
+    assert!(frame_text(&mut state).contains("editing src/main.rs"));
+
+    // Inactive machines reject reads, so remote rows explain instead of requesting.
+    if let Some(ClientShellOverlay::Navigator(navigator)) = state.overlay.as_mut() {
+        navigator.selected = Some(ClientNavigatorTarget::Pane {
+            endpoint_id: remote_id,
+            pane_id: "pane_remote".into(),
+        });
+    }
+    assert!(state
+        .tick_navigator_preview(now + std::time::Duration::from_secs(4))
+        .actions
+        .is_empty());
+    assert!(frame_text(&mut state).contains("Live preview is available for agents"));
+}
