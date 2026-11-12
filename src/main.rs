@@ -323,6 +323,14 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Desktop tab row placement: "top" or "bottom".
 # tab_bar_position = "top"
 
+# Desktop tab shape: "block" fills every tab; "pill" draws the focused tab as a
+# rounded pill and leaves other tabs as plain text. "pill" needs a font with
+# Powerline glyphs, such as a Nerd Font.
+# tab_bar_style = "block"
+
+# Show the focused workspace name in the tab row: "off" or "left".
+# tab_bar_workspace_label = "off"
+
 # Ordered status entries at the right edge of the desktop tab bar.
 # Supported types: zoom, hostname, datetime, text, and command.
 # Hostname, datetime, and command entries resolve on the Herdr server.

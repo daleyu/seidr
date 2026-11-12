@@ -271,6 +271,67 @@ fn manual_client_chrome_preferences_round_trip_per_endpoint() {
 }
 
 #[test]
+fn pill_tab_bar_rounds_the_focused_tab_and_leads_with_the_workspace_label() {
+    let mut projected = snapshot();
+    projected.tabs.push(ClientShellTab {
+        tab_id: "tab_2".into(),
+        workspace_id: "ws_1".into(),
+        number: 2,
+        label: "other".into(),
+        custom_label: false,
+        zoomed: false,
+        focused: false,
+        agent_status: AgentStatus::Idle,
+    });
+    let workspace_label = projected
+        .workspaces
+        .iter()
+        .find(|workspace| Some(&workspace.workspace_id) == projected.focused_workspace_id.as_ref())
+        .expect("focused workspace")
+        .label
+        .clone();
+    // Long enough that the tab is not padded out to the minimum tab width.
+    let focused_label = "editor";
+    projected
+        .tabs
+        .iter_mut()
+        .find(|tab| tab.focused)
+        .expect("focused tab")
+        .label = focused_label.into();
+    let top_row = |style, workspace_label| {
+        let mut config = ClientShellConfig::from_config(&Config::default());
+        config.mobile_width_threshold = 0;
+        config.tab_bar_style = style;
+        config.tab_bar_workspace_label = workspace_label;
+        let mut state = ClientShellState::new(config);
+        state.set_snapshot(Box::new(projected.clone()));
+        state.set_pane_surface(surface());
+        let frame = state.compose(106, 20).expect("tab bar frame");
+        let row = frame.cells[..frame.width as usize]
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect::<String>();
+        (row, state.hits.tabs.clone())
+    };
+    use crate::config::{TabBarStyleConfig as Shape, TabBarWorkspaceLabelConfig as Label};
+
+    let (block_row, block_hits) = top_row(Shape::Block, Label::Off);
+    assert!(!block_row.contains('\u{e0b6}'));
+
+    let (pill_row, pill_hits) = top_row(Shape::Pill, Label::Off);
+    assert!(pill_row.contains(&format!("\u{e0b6} {focused_label} \u{e0b4}")));
+    assert_eq!(pill_row.matches('\u{e0b6}').count(), 1);
+    // The pill only changes how a tab is painted, never where it is.
+    assert_eq!(pill_hits, block_hits);
+
+    let (labeled_row, labeled_hits) = top_row(Shape::Pill, Label::Left);
+    let label_at = labeled_row.find(&workspace_label).expect("workspace label");
+    let pill_at = labeled_row.find('\u{e0b6}').expect("focused pill");
+    assert!(label_at < pill_at);
+    assert!(labeled_hits[0].0.x > pill_hits[0].0.x);
+}
+
+#[test]
 fn tab_bar_renders_endpoint_status_ellipses_and_clamps_to_useful_scroll() {
     let mut projected = snapshot();
     projected.tab_bar_right = vec![

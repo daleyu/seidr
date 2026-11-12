@@ -1040,6 +1040,26 @@
           ]
         },
         {
+          "key": "ui.tab_bar_style",
+          "type": "enum",
+          "default": "\"block\"",
+          "description": "Draw every desktop tab as a filled block, or draw the focused tab as a rounded pill and the others as plain text. The pill needs a font with Powerline glyphs.",
+          "values": [
+            "block",
+            "pill"
+          ]
+        },
+        {
+          "key": "ui.tab_bar_workspace_label",
+          "type": "enum",
+          "default": "\"off\"",
+          "description": "Show the focused workspace name at the left edge of the desktop tab row.",
+          "values": [
+            "off",
+            "left"
+          ]
+        },
+        {
           "key": "ui.tab_bar_right",
           "type": "array",
           "default": "[]",

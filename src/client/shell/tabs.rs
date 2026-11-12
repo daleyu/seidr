@@ -3,6 +3,10 @@ use super::*;
 const TAB_SCROLL_BUTTON_WIDTH: u16 = 3;
 const MIN_TAB_STRIP_WIDTH: u16 =
     MIN_TAB_WIDTH + NEW_TAB_WIDTH + TAB_SCROLL_BUTTON_WIDTH.saturating_mul(2);
+const MAX_WORKSPACE_LABEL_WIDTH: u16 = 30;
+/// Powerline half circles; the terminal font must provide them.
+const PILL_LEFT_CAP: &str = "\u{e0b6}";
+const PILL_RIGHT_CAP: &str = "\u{e0b4}";
 
 pub(crate) fn render_tab_bar(
     buffer: &mut Buffer,
@@ -29,6 +33,13 @@ pub(crate) fn render_tab_bar(
         })
         .collect::<Vec<_>>();
     let content = tab_bar_content_area(snapshot, area);
+    let content = render_tab_bar_workspace_label(buffer, content, snapshot, config);
+    let pill = config.tab_bar_style == crate::config::TabBarStyleConfig::Pill;
+    let idle_bg = if pill {
+        palette.panel_bg
+    } else {
+        palette.surface0
+    };
     let mouse_chrome = config.mouse_capture;
     let new_tab_width = if mouse_chrome { NEW_TAB_WIDTH } else { 0 };
     let desired_total = desired_widths
@@ -79,7 +90,7 @@ pub(crate) fn render_tab_bar(
                 } else {
                     palette.overlay0
                 })
-                .bg(palette.surface0),
+                .bg(idle_bg),
         );
         x = hits.tab_scroll_left.right();
         content
@@ -110,11 +121,20 @@ pub(crate) fn render_tab_bar(
                 base
             }
         } else if tab.custom_label {
-            Style::default().fg(palette.overlay1).bg(palette.surface0)
+            Style::default().fg(palette.overlay1).bg(idle_bg)
         } else {
-            Style::default().fg(palette.overlay0).bg(palette.surface0)
+            Style::default().fg(palette.overlay0).bg(idle_bg)
         };
-        let padding = width.saturating_sub(display_width(&name));
+        // The pill keeps the block tab's width; its caps replace one padding cell per side.
+        let body = if pill && tab.focused && width >= 3 {
+            let cap = Style::default().fg(palette.accent).bg(palette.panel_bg);
+            put_text(buffer, rect.x, rect.y, 1, PILL_LEFT_CAP, cap);
+            put_text(buffer, rect.right() - 1, rect.y, 1, PILL_RIGHT_CAP, cap);
+            Rect::new(rect.x + 1, rect.y, width - 2, 1)
+        } else {
+            rect
+        };
+        let padding = body.width.saturating_sub(display_width(&name));
         let left = padding / 2;
         let text = format!(
             "{empty:left$}{name}{empty:right_padding$}",
@@ -122,7 +142,7 @@ pub(crate) fn render_tab_bar(
             left = left as usize,
             right_padding = padding.saturating_sub(left) as usize,
         );
-        put_text(buffer, rect.x, rect.y, rect.width, &text, style);
+        put_text(buffer, body.x, body.y, body.width, &text, style);
         hits.tabs.push((rect, tab.tab_id.clone()));
         first_visible.get_or_insert(index);
         last_visible = Some(index);
@@ -147,7 +167,7 @@ pub(crate) fn render_tab_bar(
                 } else {
                     palette.overlay0
                 })
-                .bg(palette.surface0),
+                .bg(idle_bg),
         );
         hits.new_tab = Rect::new(
             hits.tab_scroll_right.right(),
@@ -251,6 +271,45 @@ fn tab_bar_content_area(snapshot: &ClientShellSnapshot, area: Rect) -> Rect {
     Rect {
         width: area.width.saturating_sub(reserved),
         ..area
+    }
+}
+
+/// Draws the focused workspace name at the left edge and returns the area left for tabs.
+fn render_tab_bar_workspace_label(
+    buffer: &mut Buffer,
+    content: Rect,
+    snapshot: &ClientShellSnapshot,
+    config: &ClientShellConfig,
+) -> Rect {
+    if config.tab_bar_workspace_label != crate::config::TabBarWorkspaceLabelConfig::Left {
+        return content;
+    }
+    let Some(workspace) = snapshot.workspaces.iter().find(|workspace| {
+        Some(workspace.workspace_id.as_str()) == snapshot.focused_workspace_id.as_deref()
+    }) else {
+        return content;
+    };
+    let label_width = display_width(&workspace.label).min(MAX_WORKSPACE_LABEL_WIDTH);
+    // One space before the name and two after it, so it does not run into the first tab.
+    let reserved = label_width.saturating_add(3);
+    if label_width == 0 || content.width.saturating_sub(reserved) < MIN_TAB_STRIP_WIDTH {
+        return content;
+    }
+    put_text(
+        buffer,
+        content.x.saturating_add(1),
+        content.y,
+        label_width,
+        &workspace.label,
+        Style::default()
+            .fg(config.palette.text)
+            .bg(config.palette.panel_bg)
+            .add_modifier(Modifier::BOLD),
+    );
+    Rect {
+        x: content.x.saturating_add(reserved),
+        width: content.width - reserved,
+        ..content
     }
 }
 
