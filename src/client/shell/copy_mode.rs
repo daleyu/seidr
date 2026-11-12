@@ -731,7 +731,7 @@ impl ClientShellState {
             let pane_id = copy_mode.pane_id.clone();
             let origin = copy_mode.cursor;
             let (method, kind) = match operation {
-                ClientCopyOperation::Find(find) => (
+                ClientCopyOperation::Row(query) => (
                     crate::api::schema::Method::PaneSelectionRead(
                         crate::api::schema::PaneSelectionReadParams {
                             pane_id: pane_id.clone(),
@@ -753,7 +753,7 @@ impl ClientShellState {
                         session_generation,
                         geometry: copy_mode.geometry,
                         alternate_screen_active: copy_mode.alternate_screen_active,
-                        find,
+                        query,
                     }),
                 ),
                 ClientCopyOperation::Motion(motion) => (

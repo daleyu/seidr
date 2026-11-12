@@ -12,6 +12,7 @@ mod context_menu;
 mod copy_gutter;
 mod copy_mode;
 mod copy_motions;
+mod copy_text_objects;
 mod endpoint_agent_state;
 mod endpoint_agents;
 mod endpoint_navigation;

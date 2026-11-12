@@ -848,7 +848,7 @@ pub(super) struct ClientCopySearchPrompt {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum ClientCopyOperation {
     Motion(crate::api::schema::PaneCopyMotion),
-    Find(ClientCopyFind),
+    Row(ClientCopyRowQuery),
     Search {
         query: String,
         direction: crate::api::schema::PaneCopySearchDirection,
@@ -863,6 +863,22 @@ pub(super) struct ClientCopyFind {
     pub(super) target: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ClientCopyTextObject {
+    Word,
+    BigWord,
+    Pair(char, char),
+    Quote(char),
+    Line,
+}
+
+/// What a bounded current-row read resolves once its text arrives.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum ClientCopyRowQuery {
+    Find(ClientCopyFind),
+    TextObject(ClientCopyTextObject),
+}
+
 #[derive(Debug)]
 pub(super) struct ClientCopyFindRequest {
     pub(super) pane_id: String,
@@ -871,12 +887,14 @@ pub(super) struct ClientCopyFindRequest {
     pub(super) session_generation: u64,
     pub(super) geometry: (u16, u16),
     pub(super) alternate_screen_active: bool,
-    pub(super) find: ClientCopyFind,
+    pub(super) query: ClientCopyRowQuery,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct ClientCopyVimInput {
     pub(super) count: Option<u32>,
+    /// `i` was pressed and the next key names an inner text object.
+    pub(super) text_object: bool,
     pub(super) find: Option<ClientCopyFind>,
     pub(super) last_find: Option<ClientCopyFind>,
 }

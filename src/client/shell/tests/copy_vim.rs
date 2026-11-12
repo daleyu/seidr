@@ -344,3 +344,94 @@ fn copy_vim_find_ignores_stale_content_coordinates_sessions_and_errors() {
         assert_eq!(cursor(&state), origin);
     }
 }
+
+#[test]
+fn copy_vim_text_objects_replace_the_selection_on_the_cursor_row() {
+    for (keys, text, origin_col, expected) in [
+        ("iw", "ab cd", 3, Some((3, 4))),
+        ("viw", "ab cd", 0, Some((0, 1))),
+        ("Viw", "ab cd", 4, Some((3, 4))),
+        ("iW", "a.b c", 1, Some((0, 2))),
+        ("i(", "f(ab)", 3, Some((2, 3))),
+        ("ib", "f(ab)", 0, Some((2, 3))),
+        ("i}", "{ab} ", 1, Some((1, 2))),
+        ("iB", "{ab} ", 2, Some((1, 2))),
+        ("i]", "x[ab]", 2, Some((2, 3))),
+        ("i>", "<ab> ", 2, Some((1, 2))),
+        ("i\"", "\"ab\" ", 2, Some((1, 2))),
+        ("i'", "'ab' ", 1, Some((1, 2))),
+        ("i`", "`ab` ", 3, Some((1, 2))),
+        ("il", " abc ", 0, Some((1, 3))),
+        // No object under the cursor leaves the cursor and selection alone.
+        ("i(", "abcde", 2, None),
+        ("vi\"", "abcde", 2, None),
+    ] {
+        let mut state = visual();
+        state.handle_raw_events(vec![RawInputEvent::Key(TerminalKey::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE,
+        ))]);
+        assert!(state.copy_mode.as_ref().unwrap().selection.is_none());
+        state.copy_mode.as_mut().unwrap().cursor.col = origin_col;
+        let origin = cursor(&state);
+        let input = state.handle_input_bytes(keys.as_bytes());
+        reply(&mut state, &request_id(&input), text);
+        let mode = state.copy_mode.as_ref().unwrap();
+        assert!(!mode.vim_input.text_object, "{keys}");
+        match expected {
+            Some((start, end)) => {
+                assert_eq!(cursor(&state), PaneTextPoint { col: end, ..origin });
+                assert_eq!(
+                    mode.selection,
+                    Some(ClientCopySelection::Character {
+                        anchor: PaneTextPoint {
+                            col: start,
+                            ..origin
+                        }
+                    }),
+                    "{keys}"
+                );
+                assert_eq!(
+                    state.selection.as_ref().unwrap().ordered_cells(),
+                    ((origin.row, start), (origin.row, end)),
+                    "{keys}"
+                );
+            }
+            None => {
+                assert_eq!(cursor(&state), origin, "{keys}");
+                assert_eq!(mode.selection.is_some(), keys.starts_with('v'), "{keys}");
+            }
+        }
+    }
+}
+
+#[test]
+fn copy_vim_text_object_prefix_cancels_and_queues_like_other_pending_keys() {
+    // Escape and unknown object keys drop the pending `i` without side effects.
+    let mut state = visual();
+    let origin = cursor(&state);
+    state.handle_input_bytes(b"i");
+    assert!(state.copy_mode.as_ref().unwrap().vim_input.text_object);
+    state.handle_raw_events(vec![RawInputEvent::Key(TerminalKey::new(
+        KeyCode::Esc,
+        KeyModifiers::NONE,
+    ))]);
+    assert!(state.copy_mode.as_ref().unwrap().selection.is_some());
+    let input = state.handle_input_bytes(b"ij");
+    assert!(input.actions.is_empty());
+    assert_eq!(cursor(&state), origin);
+    state.handle_input_bytes(b"j");
+    assert_eq!(cursor(&state).row, origin.row + 1);
+
+    // Keys typed behind the row read wait for it, so `iwy` yanks the word.
+    let mut state = visual();
+    let input = state.handle_input_bytes(b"iwy");
+    assert_eq!(state.mode, ClientShellMode::Copy);
+    let actions = reply(&mut state, &request_id(&input), "ab cd");
+    assert_eq!(state.mode, ClientShellMode::Terminal);
+    assert!(actions.iter().any(|action| matches!(action,
+        ClientShellAction::Endpoint { request, .. }
+            if matches!(&request.method, Method::PaneSelectionRead(params)
+                if params.anchor.col == 0 && params.cursor.col == 1)
+    )));
+}

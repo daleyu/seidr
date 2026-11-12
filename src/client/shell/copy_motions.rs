@@ -1,4 +1,4 @@
-//! Client-owned Vim counts and same-row character motions. Read one bounded
+//! Client-owned Vim counts, same-row character motions, and text objects. Read one bounded
 //! terminal row per find through the existing API, including offscreen history.
 use super::*;
 use crossterm::event::KeyModifiers;
@@ -34,9 +34,21 @@ impl ClientShellState {
                     // Reverse repeats must never change the original direction.
                     input.last_find = Some(find.clone());
                     self.copy_operation_queue
-                        .push_back(ClientCopyOperation::Find(find));
+                        .push_back(ClientCopyOperation::Row(ClientCopyRowQuery::Find(find)));
                     self.dispatch_next_copy_operation(outcome);
                 }
+            }
+            outcome.repaint = true;
+            return true;
+        }
+        if std::mem::take(&mut input.text_object) {
+            // Like Vim, an unknown object key is swallowed with the pending `i`.
+            if let Some(object) = command.and_then(ClientCopyTextObject::from_command) {
+                self.copy_operation_queue
+                    .push_back(ClientCopyOperation::Row(ClientCopyRowQuery::TextObject(
+                        object,
+                    )));
+                self.dispatch_next_copy_operation(outcome);
             }
             outcome.repaint = true;
             return true;
@@ -66,6 +78,11 @@ impl ClientShellState {
             outcome.repaint = true;
             return true;
         }
+        if command == Some('i') {
+            input.text_object = true;
+            outcome.repaint = true;
+            return true;
+        }
         if matches!(command, Some(';' | ',')) {
             if let Some(mut find) = input.last_find.clone() {
                 find.count = count;
@@ -73,7 +90,7 @@ impl ClientShellState {
                     find.backward = !find.backward;
                 }
                 self.copy_operation_queue
-                    .push_back(ClientCopyOperation::Find(find));
+                    .push_back(ClientCopyOperation::Row(ClientCopyRowQuery::Find(find)));
                 self.dispatch_next_copy_operation(outcome);
             }
             outcome.repaint = true;
@@ -148,7 +165,7 @@ impl ClientShellState {
             session_generation,
             geometry,
             alternate_screen_active,
-            find,
+            query,
         } = request;
         if self.copy_session_generation != session_generation {
             return (false, Vec::new());
@@ -166,7 +183,25 @@ impl ClientShellState {
                 pane_id: returned,
                 text,
             }) if returned == pane_id && valid => {
-                let col = find_column(&text, origin.col, &find).unwrap_or(origin.col);
+                let col = match &query {
+                    ClientCopyRowQuery::Find(find) => find_column(&text, origin.col, find),
+                    ClientCopyRowQuery::TextObject(object) => {
+                        super::copy_text_objects::text_object_columns(&text, origin.col, *object)
+                            .map(|(start, end)| {
+                                // The object replaces any selection, as `viw` does in Vim.
+                                if let Some(copy_mode) = self.copy_mode.as_mut() {
+                                    copy_mode.selection = Some(ClientCopySelection::Character {
+                                        anchor: crate::api::schema::PaneTextPoint {
+                                            row: origin.row,
+                                            col: start,
+                                        },
+                                    });
+                                }
+                                end
+                            })
+                    }
+                }
+                .unwrap_or(origin.col);
                 self.apply_copy_motion_target(
                     &pane_id,
                     origin,
