@@ -32,8 +32,6 @@ pub(crate) fn render_tab_bar(
             display_width(&label).saturating_add(4).max(MIN_TAB_WIDTH)
         })
         .collect::<Vec<_>>();
-    let content = tab_bar_content_area(snapshot, area);
-    let content = render_tab_bar_workspace_label(buffer, content, snapshot, config);
     let pill = config.tab_bar_style == crate::config::TabBarStyleConfig::Pill;
     let idle_bg = if pill {
         palette.panel_bg
@@ -48,6 +46,9 @@ pub(crate) fn render_tab_bar(
         .fold(0_u16, u16::saturating_add)
         .saturating_add(tabs.len().saturating_sub(1).min(u16::MAX as usize) as u16)
         .saturating_add(new_tab_width);
+    let content = tab_bar_content_area(snapshot, area);
+    let content =
+        render_tab_bar_workspace_label(buffer, area, content, desired_total, snapshot, config);
     let overflow =
         desired_total > content.width && (!mouse_chrome || content.width >= MIN_TAB_STRIP_WIDTH);
     let available = if overflow && mouse_chrome {
@@ -274,14 +275,23 @@ fn tab_bar_content_area(snapshot: &ClientShellSnapshot, area: Rect) -> Rect {
     }
 }
 
-/// Draws the focused workspace name at the left edge and returns the area left for tabs.
+/// Draws the focused workspace name and returns the area left for tabs.
+///
+/// `content` is the row minus the right-side status entries. A left or right label
+/// reserves its cells; a centered label yields to the tabs and is hidden when they
+/// would reach it.
 fn render_tab_bar_workspace_label(
     buffer: &mut Buffer,
+    area: Rect,
     content: Rect,
+    tabs_width: u16,
     snapshot: &ClientShellSnapshot,
     config: &ClientShellConfig,
 ) -> Rect {
-    if config.tab_bar_workspace_label != crate::config::TabBarWorkspaceLabelConfig::Left {
+    use crate::config::TabBarWorkspaceLabelConfig as Position;
+
+    let position = config.tab_bar_workspace_label;
+    if position == Position::Off {
         return content;
     }
     let Some(workspace) = snapshot.workspaces.iter().find(|workspace| {
@@ -290,14 +300,45 @@ fn render_tab_bar_workspace_label(
         return content;
     };
     let label_width = display_width(&workspace.label).min(MAX_WORKSPACE_LABEL_WIDTH);
-    // One space before the name and two after it, so it does not run into the first tab.
-    let reserved = label_width.saturating_add(3);
-    if label_width == 0 || content.width.saturating_sub(reserved) < MIN_TAB_STRIP_WIDTH {
+    if label_width == 0 {
         return content;
     }
+    // One cell outside the name and two between it and the tabs.
+    let reserved = label_width.saturating_add(3);
+    let (label_x, tabs) = match position {
+        Position::Off => return content,
+        Position::Left | Position::Right => {
+            if content.width.saturating_sub(reserved) < MIN_TAB_STRIP_WIDTH {
+                return content;
+            }
+            let width = content.width - reserved;
+            if position == Position::Left {
+                let x = content.x + reserved;
+                (
+                    content.x + 1,
+                    Rect {
+                        x,
+                        width,
+                        ..content
+                    },
+                )
+            } else {
+                (content.x + width + 2, Rect { width, ..content })
+            }
+        }
+        Position::Center => {
+            let label_x = area.x + area.width.saturating_sub(label_width) / 2;
+            let tabs_end = content.x.saturating_add(tabs_width).saturating_add(2);
+            if label_x < tabs_end || label_x + label_width >= content.right() {
+                return content;
+            }
+            let width = label_x - 2 - content.x;
+            (label_x, Rect { width, ..content })
+        }
+    };
     put_text(
         buffer,
-        content.x.saturating_add(1),
+        label_x,
         content.y,
         label_width,
         &workspace.label,
@@ -306,11 +347,7 @@ fn render_tab_bar_workspace_label(
             .bg(config.palette.panel_bg)
             .add_modifier(Modifier::BOLD),
     );
-    Rect {
-        x: content.x.saturating_add(reserved),
-        width: content.width - reserved,
-        ..content
-    }
+    tabs
 }
 
 fn render_tab_bar_status(

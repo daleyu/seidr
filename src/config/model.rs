@@ -922,7 +922,12 @@ pub enum TabBarStyleConfig {
 pub enum TabBarWorkspaceLabelConfig {
     #[default]
     Off,
+    /// Before the tabs.
     Left,
+    /// Centered in the row; hidden while the tabs would reach it.
+    Center,
+    /// After the tabs, before the right-side status entries.
+    Right,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1031,7 +1036,8 @@ pub struct UiConfig {
     pub tab_bar_position: TabBarPositionConfig,
     /// Desktop tab shape: "block" or "pill". Default: block.
     pub tab_bar_style: TabBarStyleConfig,
-    /// Show the focused workspace name in the tab row: "off" or "left". Default: off.
+    /// Show the focused workspace name in the tab row: "off", "left", "center", or "right".
+    /// Default: off.
     pub tab_bar_workspace_label: TabBarWorkspaceLabelConfig,
     /// Ordered entries shown at the right edge of the desktop tab row. Empty by default.
     pub tab_bar_right: Vec<TabBarRightEntryConfig>,

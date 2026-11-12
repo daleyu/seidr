@@ -1053,10 +1053,12 @@
           "key": "ui.tab_bar_workspace_label",
           "type": "enum",
           "default": "\"off\"",
-          "description": "Show the focused workspace name at the left edge of the desktop tab row.",
+          "description": "Show the focused workspace name in the desktop tab row: before the tabs, centered, or after them next to the right-side status entries.",
           "values": [
             "off",
-            "left"
+            "left",
+            "center",
+            "right"
           ]
         },
         {

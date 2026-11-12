@@ -328,7 +328,8 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Powerline glyphs, such as a Nerd Font.
 # tab_bar_style = "block"
 
-# Show the focused workspace name in the tab row: "off" or "left".
+# Show the focused workspace name in the tab row: "off", "left", "center", or "right".
+# A centered name is hidden while the tabs would reach it.
 # tab_bar_workspace_label = "off"
 
 # Ordered status entries at the right edge of the desktop tab bar.

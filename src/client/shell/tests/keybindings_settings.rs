@@ -329,6 +329,26 @@ fn pill_tab_bar_rounds_the_focused_tab_and_leads_with_the_workspace_label() {
     let pill_at = labeled_row.find('\u{e0b6}').expect("focused pill");
     assert!(label_at < pill_at);
     assert!(labeled_hits[0].0.x > pill_hits[0].0.x);
+
+    // Columns, not bytes: the pill caps are multi-byte.
+    let column = |row: &str, needle: &str| {
+        let at = row.find(needle).expect("needle in row");
+        row[..at].chars().count()
+    };
+    let label_columns = workspace_label.chars().count();
+
+    let (right_row, right_hits) = top_row(Shape::Pill, Label::Right);
+    assert_eq!(right_hits, pill_hits);
+    assert!(column(&right_row, &workspace_label) > column(&right_row, "\u{e0b4}"));
+    assert!(right_row.trim_end().ends_with(&workspace_label));
+
+    let (center_row, center_hits) = top_row(Shape::Pill, Label::Center);
+    assert_eq!(center_hits, pill_hits);
+    // The tab row starts after the sidebar divider.
+    let bar_start = column(&center_row, "│") + 1;
+    let left_gap = column(&center_row, &workspace_label) - bar_start;
+    let right_gap = center_row.chars().count() - bar_start - left_gap - label_columns;
+    assert!(left_gap.abs_diff(right_gap) <= 1);
 }
 
 #[test]

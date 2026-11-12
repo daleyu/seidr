@@ -332,7 +332,7 @@ Set `tab_bar_position = "bottom"` under `[ui]` to place the desktop tab row belo
 
 Set `tab_bar_style = "pill"` to draw the focused tab as a rounded pill and leave the other tabs as plain text on the panel background. The pill uses the Powerline half-circle glyphs, so the terminal font must provide them (any Nerd Font does). The default is `"block"`.
 
-Set `tab_bar_workspace_label = "left"` to show the focused workspace name at the left edge of the tab row, before the tabs. The label is hidden when the row is too narrow to keep the tabs usable. The default is `"off"`.
+Set `tab_bar_workspace_label` to `"left"`, `"center"`, or `"right"` to show the focused workspace name in the tab row. `"left"` puts it before the tabs, `"right"` puts it after them, just before any `tab_bar_right` entries, and `"center"` centers it in the row. The label is hidden when the row is too narrow to keep the tabs usable, and a centered label is also hidden while the tabs would reach it. The default is `"off"`.
 
 Configure an ordered tmux-style status area at the right edge of the tab row:
 
